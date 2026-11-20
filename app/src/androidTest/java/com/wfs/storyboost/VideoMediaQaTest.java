@@ -2,6 +2,7 @@ package com.wfs.storyboost;
 
 import static org.junit.Assert.*;
 import android.app.Instrumentation;
+import android.content.Intent;
 import android.content.ContentValues;
 import android.content.Context;
 import android.media.MediaCodecInfo;
@@ -13,9 +14,13 @@ import android.net.Uri;
 import android.opengl.EGL14;
 import android.opengl.GLES30;
 import android.provider.MediaStore;
+import androidx.test.core.app.ActivityScenario;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.filters.SdkSuppress;
 import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.uiautomator.By;
+import androidx.test.uiautomator.UiDevice;
+import androidx.test.uiautomator.Until;
 import org.junit.After;
 import org.junit.Assume;
 import org.junit.Before;
@@ -473,6 +478,138 @@ public class VideoMediaQaTest {
             }
         }
         assertArrayEquals(a,hashSource(first));assertArrayEquals(b,hashSource(second));
+    }
+
+    @Test(timeout=240000)
+    public void timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation() throws Exception {
+        Uri first=importFixture("qa-timeline-a.mp4"),second=importFixture("qa-timeline-b.mp4");
+        byte[] firstHash=hashSource(first),secondHash=hashSource(second);
+        TimelineProject draft=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(first.toString(),MediaProbe.duration(ctx,first),500,1500))
+                .append(TimelineProject.Clip.create(second.toString(),MediaProbe.duration(ctx,second),500,1500))
+                .move(1,0).caption(new TimelineProject.Caption("TIMED CAPTION",500,1500,0xffffd786));
+        assertTrue(TimelineDraftStore.save(ctx,draft));
+        java.util.Set<File> before=previewFiles();
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> exported=new AtomicReference<>();
+        AtomicReference<String> error=new AtomicReference<>();
+        mergeEngine=new VideoMergeEngine();
+        inst.runOnMainSync(()->{
+            try{mergeEngine.startTimeline(ctx,draft,new VideoMergeEngine.Listener(){
+                @Override public void onCompleted(File file){exported.set(file);done.countDown();}
+                @Override public void onFailure(String message){error.set(message);done.countDown();}
+            });}catch(Exception ex){error.set(ex.toString());done.countDown();}
+        });
+        try {
+            assertTrue("Export composition timed out",done.await(100,TimeUnit.SECONDS));
+            assertNull(error.get());assertNotNull(exported.get());
+            Intent open=new Intent(ctx,StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
+            UiDevice device=UiDevice.getInstance(inst);
+            try(ActivityScenario<StudioMergeActivity> activity=ActivityScenario.launch(open)){
+                activity.onActivity(a->{
+                    android.view.View view=findButton(a.getWindow().getDecorView(),"Preview Timeline");
+                    assertNotNull(view);assertTrue(view.isEnabled());assertTrue(view.performClick());
+                });
+                assertTrue("Rendered Preview Timeline player did not open",
+                        device.wait(Until.hasObject(By.desc("Posisi waktu Preview Timeline").enabled(true)),100000));
+                File rendered=onlyNewPreview(before);
+                assertTrue("Two-second preview did not finish playback",
+                        device.wait(Until.hasObject(By.text("Putar")),10000));
+                android.graphics.Rect seek=device.findObject(By.desc("Posisi waktu Preview Timeline"))
+                        .getVisibleBounds();
+                assertTrue(device.click(seek.left+seek.width()*30/100,seek.centerY()));
+                assertTrue("Seek before the cut did not reach clip 1",device.wait(Until.hasObject(
+                        By.text(java.util.regex.Pattern.compile(".* ·  Klip 1"))),5000));
+                assertTrue(device.click(seek.left+seek.width()*70/100,seek.centerY()));
+                assertTrue("Seek after the cut did not reach clip 2",device.wait(Until.hasObject(
+                        By.text(java.util.regex.Pattern.compile(".* ·  Klip 2"))),5000));
+                try (MediaMetadataRetriever previewReader=new MediaMetadataRetriever();
+                     MediaMetadataRetriever exportReader=new MediaMetadataRetriever()){
+                    previewReader.setDataSource(rendered.getAbsolutePath());
+                    exportReader.setDataSource(exported.get().getAbsolutePath());
+                    for(long timeUs:new long[]{250_000,750_000,1_250_000,1_750_000}){
+                        android.graphics.Bitmap a=previewReader.getFrameAtTime(timeUs,MediaMetadataRetriever.OPTION_CLOSEST);
+                        android.graphics.Bitmap b=exportReader.getFrameAtTime(timeUs,MediaMetadataRetriever.OPTION_CLOSEST);
+                        assertNotNull("Preview frame "+timeUs,a);assertNotNull("Export frame "+timeUs,b);
+                        try{
+                            assertEquals(b.getWidth(),a.getWidth());assertEquals(b.getHeight(),a.getHeight());
+                            CaptionPixels previewCaption=scanCaption(a),exportCaption=scanCaption(b);
+                            assertEquals(timeUs>=500_000&&timeUs<1_500_000,!previewCaption.bounds.isEmpty());
+                            assertEquals(exportCaption.bounds.isEmpty(),previewCaption.bounds.isEmpty());
+                            if(!exportCaption.bounds.isEmpty()){
+                                assertTrue(Math.abs(exportCaption.bounds.top-previewCaption.bounds.top)<=2);
+                                assertTrue(Math.abs(exportCaption.bounds.left-previewCaption.bounds.left)<=2);
+                            }
+                            int previewGrey=(a.getPixel(120,120)>>16)&255;
+                            int exportGrey=(b.getPixel(120,120)>>16)&255;
+                            assertTrue("Preview cut marker "+timeUs+" differs from export",Math.abs(previewGrey-exportGrey)<=3);
+                        }finally{a.recycle();b.recycle();}
+                    }
+                }
+                activity.recreate();
+                assertFalse("Previous Activity must release the private MP4",rendered.exists());
+                assertEquals(draft.clips.get(0).id,TimelineDraftStore.load(ctx).clips.get(0).id);
+                assertEquals(draft.caption.out,TimelineDraftStore.load(ctx).caption.out);
+                assertArrayEquals(firstHash,hashSource(first));assertArrayEquals(secondHash,hashSource(second));
+            }
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
+
+    @Test(timeout=45000)
+    public void timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion() throws Exception {
+        Uri deleted=importFixture("qa-timeline-a.mp4"),kept=importFixture("qa-timeline-b.mp4");
+        TimelineProject valid=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(kept.toString(),MediaProbe.duration(ctx,kept),500,1500));
+        TimelineProject unavailable=valid.append(TimelineProject.Clip.create(deleted.toString(),
+                MediaProbe.duration(ctx,deleted),500,1500));
+        assertEquals(1,ctx.getContentResolver().delete(deleted,null,null));
+        java.util.Set<File> before=previewFiles();
+        byte[] sha=hashSource(kept);
+        byte[] callbacks=new byte[1];
+        VideoMergeEngine.Listener listener=new VideoMergeEngine.Listener(){
+            @Override public void onCompleted(File file){callbacks[0]++;}
+            @Override public void onFailure(String message){callbacks[0]++;}
+        };
+        inst.runOnMainSync(()->{
+            VideoMergeEngine worker=new VideoMergeEngine();
+            try{
+                worker.startTimelinePreview(ctx,TimelineProject.empty(),listener);
+                fail("An empty timeline produced a private preview");
+            }catch(IllegalArgumentException expected){assertTrue(expected.getMessage().contains("Timeline kosong"));}
+            try{
+                worker.startTimelinePreview(ctx,unavailable,listener);
+                fail("Deleted source was accepted for partial preview");
+            }catch(IllegalArgumentException expected){assertTrue(expected.getMessage().contains("sumber timeline"));}
+            worker.startTimelinePreview(ctx,valid,listener);
+            worker.cancel();
+        });
+        inst.waitForIdleSync();
+        assertEquals("Cancelled render must not send a completion or error callback",0,callbacks[0]);
+        assertEquals(before,previewFiles());
+        assertArrayEquals(sha,hashSource(kept));
+    }
+
+    private java.util.Set<File> previewFiles(){
+        File[] files=ctx.getCacheDir().listFiles((dir,name)->name.startsWith(VideoMergeEngine.PREVIEW_PREFIX));
+        assertNotNull(files);
+        return new java.util.HashSet<>(java.util.Arrays.asList(files));
+    }
+    private File onlyNewPreview(java.util.Set<File> before){
+        java.util.Set<File> now=previewFiles();now.removeAll(before);
+        assertEquals("A single private render belongs to this preview",1,now.size());
+        return now.iterator().next();
+    }
+    private static android.widget.Button findButton(android.view.View view,String text){
+        if(view instanceof android.widget.Button&&text.contentEquals(((android.widget.Button)view).getText()))
+            return (android.widget.Button)view;
+        if(view instanceof android.view.ViewGroup){
+            android.view.ViewGroup parent=(android.view.ViewGroup)view;
+            for(int i=0;i<parent.getChildCount();i++){
+                android.widget.Button match=findButton(parent.getChildAt(i),text);
+                if(match!=null)return match;
+            }
+        }
+        return null;
     }
 
     private void assertHdrCaptionExport(String transfer) throws Exception {

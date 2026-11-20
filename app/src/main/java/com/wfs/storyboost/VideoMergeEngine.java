@@ -23,6 +23,7 @@ import java.util.List;
 /** Concatenate video clips in order using Media3 Composition. Not a crossfade editor. */
 @SuppressWarnings("UnsafeOptInUsageError")
 public final class VideoMergeEngine {
+    static final String PREVIEW_PREFIX="wfs_timeline_preview_";
     public interface Listener {
         void onCompleted(File output);
         void onFailure(String message);
@@ -57,11 +58,17 @@ public final class VideoMergeEngine {
                         Presentation.createForWidthAndHeight(width,height,
                                 Presentation.LAYOUT_SCALE_TO_FIT))))
                 .build();
-        encode(context,sources,composition,-1,false,false,width,height,listener);
+        encode(context,sources,composition,-1,false,false,width,height,"wfs_join_",listener);
     }
 
     /** Timeline export uses trimmed clips and composition-global caption time. */
     void startTimeline(Context context,TimelineProject draft,Listener listener){
+        startTimeline(context,draft,"wfs_join_",listener);
+    }
+    void startTimelinePreview(Context context,TimelineProject draft,Listener listener){
+        startTimeline(context,draft,PREVIEW_PREFIX,listener);
+    }
+    private void startTimeline(Context context,TimelineProject draft,String filePrefix,Listener listener){
         if(draft==null||draft.clips.isEmpty())throw new IllegalArgumentException("Timeline kosong.");
         ArrayList<Uri> sources=new ArrayList<>();
         ArrayList<EditedMediaItem> items=new ArrayList<>();
@@ -108,13 +115,13 @@ public final class VideoMergeEngine {
             builder.setEffects(new Effects(Collections.emptyList(),Collections.singletonList(
                     new OverlayEffect(Collections.singletonList(new VideoCaptionOverlay(style,draft.caption))))));
         }
-        encode(context,sources,builder.build(),draft.duration(),hasAudio,hasHdr,canvas.width,canvas.height,listener);
+        encode(context,sources,builder.build(),draft.duration(),hasAudio,hasHdr,canvas.width,canvas.height,filePrefix,listener);
     }
 
     private void encode(Context context,List<Uri> sources,Composition composition,long expectedMs,
-                        boolean expectedAudio,boolean sourceHdr,int width,int height,Listener listener){
+                        boolean expectedAudio,boolean sourceHdr,int width,int height,String filePrefix,Listener listener){
         cancelled=false;
-        intermediate=new File(context.getCacheDir(),"wfs_join_"+System.nanoTime()+".mp4");
+        intermediate=new File(context.getCacheDir(),filePrefix+java.util.UUID.randomUUID()+".mp4");
         final File attemptFile=intermediate;
         transformer=new Transformer.Builder(context)
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
@@ -158,8 +165,8 @@ public final class VideoMergeEngine {
         transformer.start(composition,intermediate.getAbsolutePath());
     }
     /**
-     * Transfer a completed MP4 to its Gallery worker on the main thread.
-     * The worker is then the only owner allowed to delete it.
+     * Transfer a completed MP4 to its Gallery worker or private player on the main thread.
+     * The recipient is then the only owner allowed to delete it.
      */
     void transferCompletedFile(File file) {
         if (!file.equals(intermediate)) throw new IllegalStateException("Export file ownership changed");

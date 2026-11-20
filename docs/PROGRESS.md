@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta16 candidate
+
+[Continuous rendered Timeline preview](BETA16_QA.md) is implemented on a separate QA branch. Keep the roadmap at **23/32 (71.875%)** until exact-head Android evidence is available. No multitrack module added.
+
 ## Beta15 candidate
 
 One-track draft, chronological caption window and real composition export are implemented. See [beta15 QA](BETA15_QA.md) and exact Android evidence before adding a verified module to the 23/32 baseline.

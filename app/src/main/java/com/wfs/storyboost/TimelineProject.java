@@ -57,6 +57,16 @@ final class TimelineProject {
     }
     static TimelineProject empty(){return new TimelineProject(Collections.emptyList(),null,1);}
     long duration(){long end=0;for(Clip c:clips)end+=c.length();return end;}
+    /** Half-open timeline intervals. At an exact cut, ownership starts in the next clip. */
+    int clipIndexAt(long timelineMs){
+        if(timelineMs<0)return -1;
+        long end=0;
+        for(int i=0;i<clips.size();i++){
+            end+=clips.get(i).length();
+            if(timelineMs<end)return i;
+        }
+        return -1;
+    }
     private TimelineProject withClips(List<Clip> items){
         long end=0;for(Clip c:items)end+=c.length();
         Caption next=caption;

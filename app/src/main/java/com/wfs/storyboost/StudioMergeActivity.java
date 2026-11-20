@@ -44,6 +44,8 @@ public final class StudioMergeActivity extends Activity {
     private final Handler main=new Handler(Looper.getMainLooper());
     private VideoMergeEngine engine;
     private VideoView preview;
+    private TimelineRenderedPreview renderedPreview;
+    private Button openRenderedPreview;
     private android.media.MediaPlayer trimPlayer;
     private LinearLayout clipList;
     private TextView count,info;
@@ -76,6 +78,7 @@ public final class StudioMergeActivity extends Activity {
             unreadableDraft=restored==null&&TimelineDraftStore.exists(this);
             timeline=new TimelineProject.History(restored==null?TimelineProject.empty():restored);
             syncTimelineClips();
+            renderedPreview=new TimelineRenderedPreview(this);
         }
         build();
         if(timelineMode){
@@ -108,7 +111,7 @@ public final class StudioMergeActivity extends Activity {
         hero.addView(txt("Buat satu cerita dari banyak klip.",19,StudioUi.TEXT,true));
         gap(hero,8);
         hero.addView(txt(timelineMode?"Sampai 10 klip. Sumber yang sama boleh ditambahkan lagi. "+
-                "Preview memutar klip terpilih. Rentang teks berlaku pada hasil MP4.":
+                "Putar klip terpilih atau buka preview lengkap dengan caption.":
                 "Pilih sampai 10 video. Ubah urutan, preview satu klip, lalu gabungkan menjadi MP4.",12,StudioUi.MUTED,false));
         gap(hero,12);
         Button add=button("＋  Tambahkan Video",true);
@@ -129,6 +132,14 @@ public final class StudioMergeActivity extends Activity {
             if(preview.isPlaying())preview.pause();else preview.start();});
         body.addView(actions);gap(body,11);
         if(timelineMode){
+            openRenderedPreview=button("Preview Timeline",false);
+            body.addView(openRenderedPreview,new LinearLayout.LayoutParams(-1,d(48)));
+            openRenderedPreview.setOnClickListener(v->{
+                if(!canEditTimeline()||clips.isEmpty())return;
+                preview.pause();
+                renderedPreview.open(timeline.current());
+            });
+            gap(body,10);
             LinearLayout historyBar=row();
             undoTimeline=timelineButton(historyBar,"Undo",()->historyStep(false));
             redoTimeline=timelineButton(historyBar,"Redo",()->historyStep(true));
@@ -251,6 +262,7 @@ public final class StudioMergeActivity extends Activity {
         clipList.removeAllViews();
         count.setText(clips.isEmpty()?"Belum ada klip":clips.size()+" klip dalam storyboard");
         if(timelineMode){
+            openRenderedPreview.setEnabled(!clips.isEmpty()&&!unreadableDraft);
             undoTimeline.setEnabled(timeline.canUndo()&&!unreadableDraft);
             redoTimeline.setEnabled(timeline.canRedo()&&!unreadableDraft);
             TimelineProject p=timeline.current();
@@ -561,10 +573,15 @@ public final class StudioMergeActivity extends Activity {
             main.postDelayed(this,100);
         }
     };
-    @Override protected void onPause(){super.onPause();if(preview!=null)preview.pause();}
+    @Override protected void onPause(){
+        super.onPause();
+        if(preview!=null)preview.pause();
+        if(renderedPreview!=null)renderedPreview.pause();
+    }
     @Override protected void onDestroy(){
         destroyed=true;mergeStop.set(true);main.removeCallbacksAndMessages(null);
         if(engine!=null&&working)engine.cancel();
+        if(renderedPreview!=null)renderedPreview.close();
         // Let a queued writer release its transferred file after seeing cancellation.
         thumbs.shutdown();
         if(preview!=null)preview.stopPlayback();
