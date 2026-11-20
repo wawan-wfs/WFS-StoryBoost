@@ -1,0 +1,982 @@
+package com.wfs.storyboost;
+
+import static org.junit.Assert.*;
+import android.app.Instrumentation;
+import android.content.ContentValues;
+import android.content.Context;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
+import android.media.MediaMetadataRetriever;
+import android.net.Uri;
+import android.opengl.EGL14;
+import android.opengl.GLES30;
+import android.provider.MediaStore;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.filters.SdkSuppress;
+import androidx.test.platform.app.InstrumentationRegistry;
+import org.junit.After;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+/** Rights-safe synthetic MP4 fixtures run through real Android MediaExtractor.
+ * A 1080p Media3 transform is a HARD gate on the Android 15 emulator only.
+ */
+@RunWith(AndroidJUnit4.class)
+public class VideoMediaQaTest {
+    private final Instrumentation inst=InstrumentationRegistry.getInstrumentation();
+    private final List<Uri> sources=new ArrayList<>();
+    private Context ctx;
+    private Uri av,silent,rotated;
+    private VideoEngine engine;
+    private VideoMergeEngine mergeEngine;
+    private File result;
+    private final List<File> outputFiles=new ArrayList<>();
+
+    @Before public void setup() throws Exception {
+        ctx=inst.getTargetContext();
+        av=importFixture("qa-h264-aac.mp4");
+        silent=importFixture("qa-h264-silent.mp4");
+        rotated=importFixture("qa-rotated.mp4");
+    }
+    private Uri importFixture(String name) throws Exception {
+        ContentValues meta=new ContentValues();
+        meta.put(MediaStore.Video.Media.DISPLAY_NAME,"wfs-qa-"+System.nanoTime()+name);
+        meta.put(MediaStore.Video.Media.MIME_TYPE,"video/mp4");
+        meta.put(MediaStore.Video.Media.RELATIVE_PATH,"Movies/WFS-StoryBoost-QA");
+        Uri uri=ctx.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,meta);
+        assertNotNull(uri);
+        sources.add(uri);
+        try(InputStream in=inst.getContext().getAssets().open(name);
+            OutputStream out=ctx.getContentResolver().openOutputStream(uri)){
+            assertNotNull(out);
+            byte[] bytes=new byte[8192];
+            for(int n;(n=in.read(bytes))!=-1;)out.write(bytes,0,n);
+        }
+        return uri;
+    }
+    private static boolean containsCodec(File file,String mime) throws Exception {
+        MediaExtractor extractor=new MediaExtractor();
+        try{
+            extractor.setDataSource(file.getAbsolutePath());
+            for(int i=0;i<extractor.getTrackCount();i++){
+                MediaFormat fmt=extractor.getTrackFormat(i);
+                if(mime.equals(fmt.getString(MediaFormat.KEY_MIME)))return true;
+            }
+            return false;
+        }finally{extractor.release();}
+    }
+    @After public void cleanup(){
+        if(engine!=null)inst.runOnMainSync(engine::cancel);
+        if(mergeEngine!=null)inst.runOnMainSync(mergeEngine::cancel);
+        if(result!=null)result.delete();
+        for(File f:outputFiles)if(f!=null)f.delete();
+        for(Uri uri:sources)try{ctx.getContentResolver().delete(uri,null,null);}catch(Exception ignored){}
+    }
+
+    @Test public void extractorReadsAacSilentAndRotatedFixtures() throws Exception {
+        MediaProbe.Info video=MediaProbe.inspect(ctx,av);
+        assertTrue(video.video);assertTrue(video.audio);
+        assertTrue(video.videoDurationMs>=1800);
+        assertTrue(video.audioDurationMs>=1800);
+        MediaProbe.Info noAudio=MediaProbe.inspect(ctx,silent);
+        assertTrue(noAudio.video);assertFalse(noAudio.audio);
+        AspectRatioProfile.Size logical=MediaDimensions.read(ctx,rotated);
+        assertEquals(568,logical.width);
+        assertEquals(320,logical.height);
+    }
+
+    @Test(timeout=210000)
+    @SdkSuppress(minSdkVersion=35)
+    public void android15EncoderProducesActual1080pTrimmedMp4WithAac() throws Exception {
+        ExportOptions config=new ExportOptions(ColorLooks.ORIGINAL,
+            AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,200,1700)
+            .withQuality(OutputProfile.FULL_HD);
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> produced=new AtomicReference<>();
+        AtomicReference<String> error=new AtomicReference<>();
+        engine=new VideoEngine();
+        inst.runOnMainSync(()->{
+            try{
+                engine.start(ctx,av,config,new VideoEngine.Listener(){
+                    @Override public void onSuccess(File f,AspectRatioProfile.Size dims){
+                        produced.set(f);done.countDown();
+                    }
+                    @Override public void onError(String msg){error.set(msg);done.countDown();}
+                });
+            }catch(Exception ex){error.set(ex.toString());done.countDown();}
+        });
+        assertTrue("Encoder timeout",done.await(170,TimeUnit.SECONDS));
+        assertNull("VideoEngine error or 1080p fallback: "+error.get(),error.get());
+        result=produced.get();
+        assertNotNull(result);
+        MediaProbe.Info actual=MediaProbe.inspect(result);
+        assertTrue(actual.video);assertTrue(actual.audio);
+        assertTrue(containsCodec(result,"video/avc"));
+        assertTrue(containsCodec(result,"audio/mp4a-latm"));
+        assertTrue("trim duration "+actual.durationMs,Math.abs(actual.durationMs-1500)<450);
+        assertTrue("A/V drift",Math.abs(actual.audioDurationMs-actual.videoDurationMs)<450);
+        MediaMetadataRetriever retriever=new MediaMetadataRetriever();
+        try{
+            retriever.setDataSource(result.getAbsolutePath());
+            int w=Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+            int h=Integer.parseInt(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+            String rot=retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+            if(rot!=null&&Integer.parseInt(rot)%180!=0){int swap=w;w=h;h=swap;}
+            assertEquals("Real encoded width",1080,w);
+            assertEquals("Real encoded height",1920,h);
+        }finally{retriever.release();}
+    }
+
+    @Test(timeout=150000) @SdkSuppress(minSdkVersion=29,maxSdkVersion=29)
+    public void android10ReportsRealHdAndDistinguishesFullHdFromFallback() throws Exception {
+        AspectRatioProfile.Size hd=new AspectRatioProfile.Size(720,1280);
+        AspectRatioProfile.Size fhd=new AspectRatioProfile.Size(1080,1920);
+        for(int quality:new int[]{OutputProfile.HD,OutputProfile.FULL_HD}){
+            ExportOptions config=new ExportOptions(ColorLooks.ORIGINAL,
+                    AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,200,1700)
+                    .withQuality(quality);
+            CountDownLatch finished=new CountDownLatch(1);
+            AtomicReference<String> error=new AtomicReference<>();
+            AtomicReference<File> actual=new AtomicReference<>();
+            AtomicReference<AspectRatioProfile.Size> resultSize=new AtomicReference<>();
+            engine=new VideoEngine();
+            inst.runOnMainSync(()->engine.start(ctx,av,config,new VideoEngine.Listener(){
+                @Override public void onSuccess(File file,AspectRatioProfile.Size dimensions){
+                    actual.set(file);resultSize.set(dimensions);finished.countDown();
+                }
+                @Override public void onError(String message){error.set(message);finished.countDown();}
+            }));
+            assertTrue("Android 10 encoder did not finish",finished.await(55,TimeUnit.SECONDS));
+            File encoded=actual.get();
+            if(encoded==null){
+                String reason=error.get();
+                assertNotNull("No classified outcome from encoder",reason);
+                assertTrue("Unexpected failure for valid MP4: "+reason,
+                        reason.startsWith("ERROR_CODE_ENCODER_")||reason.startsWith("ERROR_CODE_ENCODING_")
+                        ||reason.startsWith("ERROR_CODE_DECODER_")||reason.startsWith("ERROR_CODE_DECODING_"));
+                android.util.Log.i("WfsEncoderQa","API29 quality="+quality+" CODEC_FAILURE "+reason);
+            }else{
+                outputFiles.add(encoded);
+                assertNull(error.get());
+                assertTrue(containsCodec(encoded,"video/avc"));
+                assertTrue(containsCodec(encoded,"audio/mp4a-latm"));
+                MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(encoded);
+                assertTrue("Unexpected sample drift: "+pts.lastPtsDriftMs(),pts.lastPtsDriftMs()>=0&&pts.lastPtsDriftMs()<=250);
+                AspectRatioProfile.Size dimensions=resultSize.get();
+                assertTrue("Unexpected actual canvas "+dimensions,hd.toString().equals(dimensions.toString())
+                        ||(quality==OutputProfile.FULL_HD&&fhd.toString().equals(dimensions.toString())));
+                android.util.Log.i("WfsEncoderQa","API29 quality="+quality+" actual="+dimensions+
+                        " A/V last PTS drift="+pts.lastPtsDriftMs()+"ms result="+
+                        (quality==OutputProfile.HD?"HD":fhd.toString().equals(dimensions.toString())?"FHD":"HD_FALLBACK"));
+            }
+            inst.runOnMainSync(engine::cleanup);
+        }
+    }
+
+    @Test public void rejectsMalformedMp4InsteadOfInventingVideoTrack() throws Exception {
+        File bad=new File(ctx.getCacheDir(),"wfs-qa-bad-"+System.nanoTime()+".mp4");
+        try{
+            try(FileOutputStream out=new FileOutputStream(bad)){
+                out.write("not a real mp4".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+            try{
+                MediaProbe.inspect(bad);
+                fail("MediaExtractor must reject corrupted MP4");
+            }catch(java.io.IOException|IllegalArgumentException expected){}
+        }finally{bad.delete();}
+    }
+
+    @Test public void videoEngineRejectsMalformedSourceBeforeAnyEncode() throws Exception {
+        Uri malformed=importFixture("qa-invalid.mp4");
+        ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,
+                AspectRatioProfile.ORIGINAL,AspectRatioProfile.FIT,true,0,0);
+        AtomicReference<RuntimeException> rejected=new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicInteger callbacks=new java.util.concurrent.atomic.AtomicInteger();
+        engine=new VideoEngine();
+        String[] before=ctx.getCacheDir().list((dir,name)->name.startsWith("storyboost_"));
+        inst.runOnMainSync(()->{
+            try{
+                engine.start(ctx,malformed,options,new VideoEngine.Listener(){
+                    @Override public void onSuccess(File file,AspectRatioProfile.Size dims){
+                        outputFiles.add(file);
+                        callbacks.incrementAndGet();
+                    }
+                    @Override public void onError(String error){callbacks.incrementAndGet();}
+                });
+            }catch(IllegalArgumentException expected){rejected.set(expected);}
+        });
+        assertNotNull("Malformed source passed engine preflight",rejected.get());
+        assertEquals(0,callbacks.get());
+        String[] after=ctx.getCacheDir().list((dir,name)->name.startsWith("storyboost_"));
+        assertNotNull(before);
+        assertNotNull(after);
+        java.util.Arrays.sort(before);
+        java.util.Arrays.sort(after);
+        assertArrayEquals("Malformed source leaked encoder cache",before,after);
+    }
+
+    private File realExport(Uri source, ExportOptions options) throws Exception {
+        CountDownLatch completed=new CountDownLatch(1);
+        AtomicReference<File> file=new AtomicReference<>();
+        AtomicReference<String> fail=new AtomicReference<>();
+        engine=new VideoEngine();
+        inst.runOnMainSync(()->{
+            try{
+                engine.start(ctx,source,options,new VideoEngine.Listener(){
+                    @Override public void onSuccess(File output,AspectRatioProfile.Size dimensions){
+                        file.set(output);completed.countDown();
+                    }
+                    @Override public void onError(String reason){fail.set(reason);completed.countDown();}
+                });
+            }catch(Exception ex){fail.set(ex.toString());completed.countDown();}
+        });
+        assertTrue("Actual encoder did not finish",completed.await(170,TimeUnit.SECONDS));
+        assertNull("VideoEngine failed: "+fail.get(),fail.get());
+        File output=file.get();
+        assertNotNull("No encoded video returned",output);
+        assertTrue("Encoded MP4 unexpectedly short",output.length()>1024);
+        outputFiles.add(output);
+        return output;
+    }
+
+    @Test(timeout=450000)
+    public void captionSafeZonesMatchEditorOverlayOnDecodedVideo() throws Exception {
+        Uri portrait=importFixture("qa-caption.mp4"), landscape=importFixture("qa-caption-rotated.mp4");
+        final int gold=0xffffd786;
+        for(int profile:new int[]{SocialExportProfile.CUSTOM,SocialExportProfile.INSTAGRAM_REELS}){
+            for(Uri source:new Uri[]{portrait,landscape}){
+                boolean rotated=landscape.equals(source);
+                int ratio=profile==SocialExportProfile.CUSTOM&&rotated
+                        ?AspectRatioProfile.LANDSCAPE_16_9:AspectRatioProfile.PORTRAIT_9_16;
+                String title="CAPTION PLACEMENT FROM PREVIEW TO VIDEO";
+                ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,ratio,AspectRatioProfile.FIT,
+                        false,0,0).withSocialProfile(profile).withCaption(title,gold);
+                byte[] before=hashSource(source);
+                File encoded=realExport(source,options);
+                try{
+                    assertTrue(containsCodec(encoded,"video/avc"));
+                    assertTrue(containsCodec(encoded,"audio/mp4a-latm"));
+                    MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(encoded);
+                    assertTrue("Video needs actual A/V samples",pts.videoSamples>10&&pts.audioSamples>15);
+                    assertTrue("Caption export changed A/V timing",pts.lastPtsDriftMs()>=0&&pts.lastPtsDriftMs()<=250);
+                    android.media.MediaMetadataRetriever reader=new android.media.MediaMetadataRetriever();
+                    try{
+                        reader.setDataSource(encoded.getAbsolutePath());
+                        android.graphics.Rect reference=null;
+                        int w=profile==SocialExportProfile.CUSTOM&&rotated?1280:profile==SocialExportProfile.CUSTOM?720:1080;
+                        int h=profile==SocialExportProfile.CUSTOM&&rotated?720:profile==SocialExportProfile.CUSTOM?1280:1920;
+                        for(long time:new long[]{200000L,850000L}){
+                            android.graphics.Bitmap frame=reader.getFrameAtTime(time,MediaMetadataRetriever.OPTION_CLOSEST);
+                            assertNotNull("No decoded frame at "+time,frame);
+                            try{
+                                assertEquals("Decoded width",w,frame.getWidth());
+                                assertEquals("Decoded height",h,frame.getHeight());
+                                android.graphics.Rect actual=captionPixels(frame);
+                                if(reference==null)reference=drawPreviewCaption(w,h,title,gold,profile);
+                                assertEquals("Caption left",reference.left/(float)w,actual.left/(float)w,.04f);
+                                assertEquals("Caption right",reference.right/(float)w,actual.right/(float)w,.04f);
+                                assertEquals("Caption top",reference.top/(float)h,actual.top/(float)h,.025f);
+                                assertEquals("Caption bottom",reference.bottom/(float)h,actual.bottom/(float)h,.025f);
+                                SocialExportProfile.Profile zone=SocialExportProfile.get(profile);
+                                assertTrue("Caption exceeds profile safe zone "+actual,
+                                        actual.top>=zone.safeTop*h&&actual.bottom<=(1f-zone.safeBottom)*h);
+                                assertTrue("Caption crosses horizontal safe margins "+actual,
+                                        actual.left>=w*.035f&&actual.right<=w*.965f);
+                                android.util.Log.i("WfsBeta11CaptionQA","profile="+profile+" rotated="+rotated+
+                                        " canvas="+w+"x"+h+" frameUs="+time+" preview="+reference+
+                                        " encoded="+actual+" sampleDriftMs="+pts.lastPtsDriftMs());
+                            }finally{frame.recycle();}
+                        }
+                    }finally{reader.release();}
+                    assertArrayEquals("Source video changed",before,hashSource(source));
+                }finally{inst.runOnMainSync(engine::cleanup);}
+            }
+        }
+    }
+
+    @Test(timeout=450000)
+    public void wrappedCaptionsOnOtherProfilesAndCustomSilentClips() throws Exception {
+        Uri colorless=importFixture("qa-caption.mp4");
+        Uri noAudio=importFixture("qa-caption-silent.mp4");
+        String words="WIDE CAPTION WRAP KEEPS EVERY LINE INSIDE SOCIAL VIDEO SAFE AREA";
+        String token="MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM";
+        int gold=0xffffd786;
+        ExportOptions base=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                AspectRatioProfile.FIT,false,0,0);
+        for(int profile:new int[]{SocialExportProfile.WHATSAPP_STATUS,
+                SocialExportProfile.INSTAGRAM_STORY,SocialExportProfile.TIKTOK}){
+            boolean mute=profile==SocialExportProfile.TIKTOK;
+            assertWrappedExport(colorless,base.withSocialProfile(profile)
+                    .withCaption(words,gold).withMute(mute),1080,1920,!mute);
+        }
+        // Natural silent input and manual ratios, both tall and wide.
+        assertWrappedExport(noAudio,base.withCustomSize(432,1008).withCaption(token,gold),
+                432,1008,false);
+        assertWrappedExport(noAudio,base.withCustomSize(1008,432).withCaption(token,gold),
+                1008,432,false);
+    }
+
+    @Test(timeout=180000)
+    public void mixedArabicLatinCjkCaptionMatchesDecodedVideoAndKeepsGraphemes() throws Exception {
+        String mixed="مرحبا بالعالم START 2026 日本語字幕 — Ångström café, selamat datang!";
+        // Unbroken text forces a fallback split. Each half must contain only
+        // complete modifier/ZWJ emoji, decomposed letters, and flag pairs.
+        String cluster="W\u0301👩🏽‍💻🇮🇩";
+        String unbroken=String.join("",Collections.nCopies(6,cluster));
+        CaptionRenderer renderer=new CaptionRenderer();
+        String[] lines=renderer.layoutLines(unbroken,432,720);
+        assertEquals(2,lines.length);
+        assertEquals(unbroken,lines[0]+lines[1]);
+        android.icu.text.BreakIterator chars=android.icu.text.BreakIterator.getCharacterInstance(java.util.Locale.ROOT);
+        chars.setText(unbroken);
+        assertTrue("Line split divided a grapheme",chars.isBoundary(lines[0].length()));
+        assertEquals("Expected one decomposed letter, one emoji and one flag per repeat",
+                18,countGraphemes(chars));
+        ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                AspectRatioProfile.FIT,false).withCustomSize(432,720).withCaption(mixed,0xffffd786);
+        Uri source=importFixture("qa-caption.mp4");
+        assertWrappedExport(source,options,432,720,true,null,true);
+        String accents=String.join("",Collections.nCopies(12,"W\u0301A\u0308N\u0303"));
+        assertWrappedExport(source,options.withCaption(accents,0xffffd786),432,720,true,null,true);
+        android.util.Log.i("WfsBeta13ColorQA","mixed RTL/LTR/CJK decoded; grapheme split UTF-16 offset="+lines[0].length());
+    }
+
+    @Test(timeout=210000)
+    public void decodedPhotoAndMp4PassIndependentCaptionGlyphOracle() throws Exception {
+        File grey=new File(ctx.getCacheDir(),"wfs-oracle-"+System.nanoTime()+".png");
+        outputFiles.add(grey);
+        android.graphics.Bitmap fixture=android.graphics.Bitmap.createBitmap(432,720,
+                android.graphics.Bitmap.Config.ARGB_8888);
+        try(FileOutputStream out=new FileOutputStream(grey)){
+            fixture.eraseColor(0xff484848);
+            assertTrue(fixture.compress(android.graphics.Bitmap.CompressFormat.PNG,100,out));
+        }finally{fixture.recycle();}
+        byte[] sourcePhoto=hashSource(Uri.fromFile(grey));
+        Uri source=importFixture("qa-caption.mp4");
+        byte[] sourceVideo=hashSource(source);
+        for(String title:new String[]{CaptionGlyphOracle.BIDI,CaptionGlyphOracle.ACCENT_EMOJI}){
+            ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                    AspectRatioProfile.FIT,false).withCustomSize(432,720).withCaption(title,0xffffd786);
+            byte[] jpeg=PhotoEngine.process(ctx,Uri.fromFile(grey),options).jpeg;
+            android.graphics.Bitmap photo=android.graphics.BitmapFactory.decodeByteArray(jpeg,0,jpeg.length);
+            assertNotNull(photo);
+            try{CaptionGlyphOracle.verify(photo,title,"jpeg");}finally{photo.recycle();}
+            File encoded=realExport(source,options);
+            MediaMetadataRetriever video=new MediaMetadataRetriever();
+            try{
+                assertTrue(containsCodec(encoded,"video/avc"));
+                MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(encoded);
+                assertTrue(pts.videoSamples>10&&pts.audioSamples>10&&pts.lastPtsDriftMs()<=250);
+                video.setDataSource(encoded.getAbsolutePath());
+                android.graphics.Bitmap frame=video.getFrameAtTime(500000L,MediaMetadataRetriever.OPTION_CLOSEST);
+                assertNotNull(frame);
+                try{CaptionGlyphOracle.verify(frame,title,"mp4");}finally{frame.recycle();}
+            }finally{video.release();inst.runOnMainSync(engine::cleanup);}
+        }
+        assertArrayEquals(sourcePhoto,hashSource(Uri.fromFile(grey)));
+        assertArrayEquals(sourceVideo,hashSource(source));
+    }
+
+    private static int countGraphemes(android.icu.text.BreakIterator chars){
+        chars.first();
+        int n=0;
+        while(chars.next()!=android.icu.text.BreakIterator.DONE)n++;
+        return n;
+    }
+
+    @Test public void nativePqAndHlgRemainNativeOnlyOnByteCopy() throws Exception {
+        for(String transfer:new String[]{"arib-std-b67","smpte2084"}){
+            Uri source=importFixture("qa-caption-"+transfer+".mp4");
+            MediaProbe.Info input=MediaProbe.inspect(ctx,source);
+            assertHdrFixture(input,transfer);
+            byte[] sha=hashSource(source);
+            ExportOptions noEdits=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                    AspectRatioProfile.FIT,true).withQuality(OutputProfile.MAX_DETAIL);
+            assertTrue(VideoPassthrough.allowed(noEdits,"video/mp4"));
+            assertFalse(VideoPassthrough.allowed(noEdits.withCaption("HDR caption",0xffffd786),"video/mp4"));
+            Uri copy=MediaSaver.copyOriginalMp4(ctx,source,"wfs-qa-hdr-copy-"+System.nanoTime()+".mp4");
+            try{
+                assertArrayEquals("Gallery copy changed native HDR bytes",sha,hashSource(copy));
+                assertHdrFixture(MediaProbe.inspect(ctx,copy),transfer);
+                assertArrayEquals(sha,hashSource(source));
+                android.util.Log.i("WfsBeta13ColorQA","gallery mode=native-byte-copy transfer="+transfer);
+            }finally{MediaSaver.discardUnaccepted(ctx,copy);}
+        }
+    }
+
+    @Test(timeout=180000) public void hlgCaptionToneMapsToSdrWhenSupported() throws Exception {
+        assertHdrCaptionExport("arib-std-b67");
+    }
+
+    @Test(timeout=180000) public void hdr10CaptionToneMapsToSdrWhenSupported() throws Exception {
+        assertHdrCaptionExport("smpte2084");
+    }
+
+    private void assertHdrCaptionExport(String transfer) throws Exception {
+        Uri uri=importFixture("qa-caption-"+transfer+".mp4");
+        MediaProbe.Info input=MediaProbe.inspect(ctx,uri);
+        assertHdrFixture(input,transfer);
+        String decoder=findMain10Decoder(transfer);
+        boolean yuvTarget=hasGlYuvTarget();
+        hdrLog("input="+transfer+" decoder="+decoder+" yuvTarget="+yuvTarget+
+                " standard="+input.colorStandard+" transfer="+input.colorTransfer+
+                " status="+(decoder==null||!yuvTarget?"CAPABILITY_SKIP":"READY"));
+        Assume.assumeTrue("No HEVC Main10 decoder",decoder!=null);
+        Assume.assumeTrue("No OpenGL ES 3 EXT_YUV_target for sampling HDR input",yuvTarget);
+        ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                AspectRatioProfile.FIT,false).withCustomSize(432,720).withCaption(
+                "HDR SHARING PREVIEW AND ENCODED SAFE AREA SHOULD MATCH",0xffffd786);
+        assertWrappedExport(uri,options,432,720,true,transfer);
+    }
+
+    private static void hdrLog(String message){
+        String run=InstrumentationRegistry.getArguments().getString("wfs.hdr.run","ci");
+        android.util.Log.i("WfsBeta14HdrQA","run="+run+" "+message);
+    }
+
+    private static void assertHdrFixture(MediaProbe.Info info,String transfer){
+        assertTrue(info.video&&info.audio&&info.isHdr());
+        assertEquals(MediaFormat.COLOR_STANDARD_BT2020,info.colorStandard);
+        assertEquals("arib-std-b67".equals(transfer)?MediaFormat.COLOR_TRANSFER_HLG:
+                MediaFormat.COLOR_TRANSFER_ST2084,info.colorTransfer);
+    }
+
+    private static String findMain10Decoder(String transfer){
+        MediaFormat format=MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_HEVC,320,544);
+        MediaCodecList codecs=new MediaCodecList(MediaCodecList.REGULAR_CODECS);
+        int main10=MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10;
+        int[] profiles="smpte2084".equals(transfer)?new int[]{
+                MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10HDR10,main10}:new int[]{main10};
+        for(int profile:profiles){
+            format.setInteger(MediaFormat.KEY_PROFILE,profile);
+            String name=codecs.findDecoderForFormat(format);
+            if(name!=null)return name;
+        }
+        return null;
+    }
+
+    private static boolean hasGlYuvTarget(){
+        var display=EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
+        if(display==EGL14.EGL_NO_DISPLAY||!EGL14.eglInitialize(display,new int[1],0,new int[1],0))return false;
+        var context=EGL14.EGL_NO_CONTEXT;
+        var surface=EGL14.EGL_NO_SURFACE;
+        try{
+            var configs=new android.opengl.EGLConfig[1];
+            int[] count={0};
+            int es3Bit=0x40; // EGL_OPENGL_ES3_BIT_KHR
+            if(!EGL14.eglChooseConfig(display,new int[]{EGL14.EGL_RENDERABLE_TYPE,es3Bit,
+                    EGL14.EGL_SURFACE_TYPE,EGL14.EGL_PBUFFER_BIT,EGL14.EGL_NONE},0,
+                    configs,0,1,count,0)||count[0]==0)return false;
+            context=EGL14.eglCreateContext(display,configs[0],EGL14.EGL_NO_CONTEXT,
+                    new int[]{EGL14.EGL_CONTEXT_CLIENT_VERSION,3,EGL14.EGL_NONE},0);
+            surface=EGL14.eglCreatePbufferSurface(display,configs[0],new int[]{EGL14.EGL_WIDTH,1,
+                    EGL14.EGL_HEIGHT,1,EGL14.EGL_NONE},0);
+            if(context==EGL14.EGL_NO_CONTEXT||surface==EGL14.EGL_NO_SURFACE||
+                    !EGL14.eglMakeCurrent(display,surface,surface,context))return false;
+            String extensions=GLES30.glGetString(GLES30.GL_EXTENSIONS);
+            return extensions!=null&&(" "+extensions+" ").contains(" GL_EXT_YUV_target ");
+        }finally{
+            EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_SURFACE,EGL14.EGL_NO_CONTEXT);
+            if(surface!=EGL14.EGL_NO_SURFACE)EGL14.eglDestroySurface(display,surface);
+            if(context!=EGL14.EGL_NO_CONTEXT)EGL14.eglDestroyContext(display,context);
+            // EGL's default display is shared with Android UI and Media3.
+            EGL14.eglReleaseThread();
+        }
+    }
+
+    @Test(timeout=120000)
+    public void captionFreeFrameStaysUnmarkedAndOriginalRemainsEligibleForPassthrough() throws Exception {
+        Uri original=importFixture("qa-caption.mp4");
+        byte[] before=hashSource(original);
+        ExportOptions copy=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                AspectRatioProfile.FIT,true,0,0).withQuality(OutputProfile.MAX_DETAIL);
+        assertTrue(VideoPassthrough.allowed(copy,"video/mp4"));
+        assertTrue(VideoPassthrough.allowed(copy.withCaption(" \u00a0 \t",0xffffd786),"video/mp4"));
+        assertFalse(VideoPassthrough.allowed(copy.withCaption("must be rendered",0xffffd786),"video/mp4"));
+        File encoded=realExport(original,copy.withCustomSize(432,1008).withQuality(OutputProfile.HD));
+        MediaMetadataRetriever reader=new MediaMetadataRetriever();
+        try{
+            reader.setDataSource(encoded.getAbsolutePath());
+            android.graphics.Bitmap frame=reader.getFrameAtTime(500000L,MediaMetadataRetriever.OPTION_CLOSEST);
+            assertNotNull(frame);
+            try{
+                assertEquals(432,frame.getWidth());
+                assertEquals(1008,frame.getHeight());
+                assertTrue("Caption-free monochrome video contains caption pixels",scanCaption(frame).bounds.isEmpty());
+            }finally{frame.recycle();}
+            assertArrayEquals(before,hashSource(original));
+        }finally{reader.release();inst.runOnMainSync(engine::cleanup);}
+    }
+
+    private void assertWrappedExport(Uri source,ExportOptions options,int w,int h,boolean audio) throws Exception {
+        assertWrappedExport(source,options,w,h,audio,null);
+    }
+
+    private void assertWrappedExport(Uri source,ExportOptions options,int w,int h,boolean audio,String hdr) throws Exception {
+        assertWrappedExport(source,options,w,h,audio,hdr,false);
+    }
+
+    private void assertWrappedExport(Uri source,ExportOptions options,int w,int h,boolean audio,String hdr,
+                                     boolean separatedMarks) throws Exception {
+        byte[] original=hashSource(source);
+        File encoded=realExport(source,options);
+        MediaMetadataRetriever reader=new MediaMetadataRetriever();
+        String hdrEvidence="";
+        try{
+            assertTrue(containsCodec(encoded,"video/avc"));
+            if(hdr!=null){
+                MediaProbe.Info converted=MediaProbe.inspect(encoded);
+                assertTrue("Tone-mapped output must explicitly signal SDR, got transfer="+converted.colorTransfer,
+                        converted.isSdr());
+                assertFalse(converted.isHdr());
+                hdrEvidence="input="+hdr+" output=avc-sdr mode=Media3-OpenGL standard="+
+                        converted.colorStandard+" transfer="+converted.colorTransfer;
+            }
+            assertEquals("Wrong AAC presence",audio,containsCodec(encoded,"audio/mp4a-latm"));
+            MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(encoded);
+            assertTrue(pts.videoSamples>10);
+            assertEquals("Wrong audio sample presence",audio,pts.audioSamples>0);
+            if(audio)assertTrue(pts.lastPtsDriftMs()>=0&&pts.lastPtsDriftMs()<=250);
+            reader.setDataSource(encoded.getAbsolutePath());
+            android.graphics.Bitmap frame=reader.getFrameAtTime(500000L,MediaMetadataRetriever.OPTION_CLOSEST);
+            assertNotNull(frame);
+            try{
+                assertEquals(w,frame.getWidth());assertEquals(h,frame.getHeight());
+                if(hdr!=null){
+                    int low=(frame.getPixel(w/6,h/3)>>16)&255;
+                    int high=(frame.getPixel(w*5/6,h/3)>>16)&255;
+                    assertTrue("Tone-mapped highlight ramp collapsed: "+low+"/"+high,high-low>18);
+                    hdrEvidence+=" gradient="+low+","+high;
+                }
+                // Arabic marks and accent dots may produce ink rows separate
+                // from their line's body. Compare the two actual line regions
+                // with preview instead of counting every detached mark as a line.
+                int lineSplit=-1;
+                if(separatedMarks){
+                    assertEquals(2,new CaptionRenderer().layoutLines(options.caption,w,h).length);
+                    float fontPx=Math.min(w*.058f,h*.04f);
+                    lineSplit=Math.round(h*SocialExportProfile.captionCenterY(options.socialProfile)-fontPx*.45f);
+                }
+                CaptionPixels pixels=scanCaption(frame,lineSplit);
+                android.graphics.Rect actual=pixels.bounds;
+                CaptionPixels preview=drawPreviewPixels(w,h,options.caption,options.captionColor,
+                        options.socialProfile,lineSplit);
+                android.graphics.Rect reference=preview.bounds;
+                if(separatedMarks){
+                    assertTrue("Missing first or second line ink",pixels.topLine.width()>w*.20f&&pixels.bottomLine.width()>w*.20f);
+                    assertBoundsMatch(preview.topLine,pixels.topLine,w,h);
+                    assertBoundsMatch(preview.bottomLine,pixels.bottomLine,w,h);
+                    android.util.Log.i("WfsBeta13CaptionQA","previewFirst="+preview.topLine+" decodedFirst="+
+                            pixels.topLine+" previewSecond="+preview.bottomLine+" decodedSecond="+pixels.bottomLine);
+                }else assertEquals("Expected two distinct rendered lines",2,pixels.bands);
+                assertBoundsMatch(reference,actual,w,h);
+                SocialExportProfile.Profile zone=SocialExportProfile.get(options.socialProfile);
+                assertTrue("Caption outside vertical safe zone "+actual,
+                        actual.top>=h*zone.safeTop&&actual.bottom<=h*(1f-zone.safeBottom));
+                assertTrue("Caption outside horizontal safe margins "+actual,
+                        actual.left>=w*.035f&&actual.right<=w*.965f);
+                if(hdr!=null)hdrEvidence+=" decoded="+actual.flattenToString().replace(' ',',')+
+                        " preview="+reference.flattenToString().replace(' ',',')+
+                        " videoSamples="+pts.videoSamples+" audioSamples="+pts.audioSamples+
+                        " driftMs="+pts.lastPtsDriftMs();
+                android.util.Log.i("WfsBeta12CaptionQA","profile="+options.socialProfile+" canvas="+w+"x"+h+
+                        " bands="+pixels.bands+" audioSamples="+pts.audioSamples+" driftMs="+pts.lastPtsDriftMs()+
+                        " preview="+reference+" encoded="+actual);
+            }finally{frame.recycle();}
+            assertArrayEquals("Source video changed",original,hashSource(source));
+            if(hdr!=null){
+                StringBuilder sha=new StringBuilder();
+                for(byte value:original)sha.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
+                hdrLog(hdrEvidence+" sha256="+sha+" status=PASS");
+            }
+        }finally{reader.release();inst.runOnMainSync(engine::cleanup);}
+    }
+
+    private android.graphics.Rect drawPreviewCaption(int w,int h,String text,int color,int profile) {
+        return drawPreviewPixels(w,h,text,color,profile,-1).bounds;
+    }
+
+    private CaptionPixels drawPreviewPixels(int w,int h,String text,int color,int profile,int splitAt) {
+        AtomicReference<CaptionPixels> result=new AtomicReference<>();
+        inst.runOnMainSync(()->{
+            CaptionPreviewView preview=new CaptionPreviewView(ctx);
+            preview.update(text,color,profile,false,true);
+            preview.layout(0,0,w,h);
+            android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(w,h,
+                    android.graphics.Bitmap.Config.ARGB_8888);
+            try{
+                preview.draw(new android.graphics.Canvas(bitmap));
+                result.set(scanCaption(bitmap,splitAt));
+            }finally{bitmap.recycle();}
+        });
+        CaptionPixels pixels=result.get();
+        assertFalse("No preview caption pixels found",pixels.bounds.isEmpty());
+        return pixels;
+    }
+
+    private static void assertBoundsMatch(android.graphics.Rect reference,android.graphics.Rect actual,int w,int h){
+        assertFalse("No encoded caption pixels found",actual.isEmpty());
+        assertEquals("Caption left",reference.left/(float)w,actual.left/(float)w,.025f);
+        assertEquals("Caption right",reference.right/(float)w,actual.right/(float)w,.025f);
+        assertEquals("Caption top",reference.top/(float)h,actual.top/(float)h,.02f);
+        assertEquals("Caption bottom",reference.bottom/(float)h,actual.bottom/(float)h,.02f);
+    }
+
+    private static android.graphics.Rect captionPixels(android.graphics.Bitmap bitmap) {
+        android.graphics.Rect bounds=scanCaption(bitmap).bounds;
+        assertFalse("No caption pixels found",bounds.isEmpty());
+        return bounds;
+    }
+
+    private static final class CaptionPixels {
+        final android.graphics.Rect bounds=new android.graphics.Rect();
+        final android.graphics.Rect topLine=new android.graphics.Rect(),bottomLine=new android.graphics.Rect();
+        int bands;
+    }
+
+    private static CaptionPixels scanCaption(android.graphics.Bitmap bitmap) {
+        return scanCaption(bitmap,-1);
+    }
+
+    private static CaptionPixels scanCaption(android.graphics.Bitmap bitmap,int splitAt) {
+        CaptionPixels pixels=new CaptionPixels();
+        android.graphics.Rect result=pixels.bounds;
+        int previousRow=-bitmap.getHeight();
+        int minimumGap=Math.max(2,bitmap.getHeight()/200);
+        int[] row=new int[bitmap.getWidth()];
+        for(int y=0;y<bitmap.getHeight();y++){
+            bitmap.getPixels(row,0,row.length,0,y,row.length,1);
+            int hits=0;
+            for(int x=0;x<row.length;x++){
+                int pixel=row[x],r=(pixel>>16)&255,g=(pixel>>8)&255,b=pixel&255;
+                if(r>165&&g>125&&r-b>58&&g-b>34){
+                    hits++;
+                    if(result.isEmpty())result.set(x,y,x+1,y+1);
+                    else result.union(x,y,x+1,y+1);
+                    if(splitAt>=0){
+                        android.graphics.Rect line=y<splitAt?pixels.topLine:pixels.bottomLine;
+                        if(line.isEmpty())line.set(x,y,x+1,y+1);
+                        else line.union(x,y,x+1,y+1);
+                    }
+                }
+            }
+            if(hits>=2){
+                if(y-previousRow>minimumGap)pixels.bands++;
+                previousRow=y;
+            }
+        }
+        return pixels;
+    }
+
+    private byte[] hashSource(Uri source) throws Exception {
+        java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-256");
+        try(InputStream in=ctx.getContentResolver().openInputStream(source)){
+            assertNotNull(in);
+            byte[] bytes=new byte[8192];
+            for(int n;(n=in.read(bytes))!=-1;)digest.update(bytes,0,n);
+        }
+        return digest.digest();
+    }
+
+    @Test(timeout=350000)
+    @SdkSuppress(minSdkVersion=35)
+    public void splitExportProducesTwoIndependentTimedH264AacSegments() throws Exception {
+        ExportOptions first=new ExportOptions(ColorLooks.ORIGINAL,
+                AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,0,1000)
+                .withQuality(OutputProfile.FULL_HD);
+        ExportOptions second=new ExportOptions(ColorLooks.ORIGINAL,
+                AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,1000,2000)
+                .withQuality(OutputProfile.FULL_HD);
+        File p1=realExport(av,first);
+        File p2=realExport(av,second);
+        for(File f:new File[]{p1,p2}){
+            MediaProbe.Info info=MediaProbe.inspect(f);
+            assertTrue(info.video);
+            assertTrue(info.audio);
+            assertTrue(containsCodec(f,"video/avc"));
+            assertTrue(containsCodec(f,"audio/mp4a-latm"));
+            assertTrue("Split output expected ~1000ms, actual="+info.durationMs,
+                    Math.abs(info.durationMs-1000)<420);
+        }
+        assertNotEquals("Two split exports must be distinct files",
+                p1.getAbsolutePath(),p2.getAbsolutePath());
+    }
+
+    @Test(timeout=240000)
+    @SdkSuppress(minSdkVersion=35)
+    public void media3MergeConcatenatesTwoClipsIntoOneMp4() throws Exception {
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> produced=new AtomicReference<>();
+        AtomicReference<String> error=new AtomicReference<>();
+        mergeEngine=new VideoMergeEngine();
+        inst.runOnMainSync(()->{
+            try{
+                mergeEngine.start(ctx,java.util.Arrays.asList(av,av),
+                        OutputProfile.FULL_HD,new VideoMergeEngine.Listener(){
+                    @Override public void onCompleted(File file){
+                        produced.set(file);done.countDown();
+                    }
+                    @Override public void onFailure(String message){
+                        error.set(message);done.countDown();
+                    }
+                });
+            }catch(Exception ex){error.set(ex.toString());done.countDown();}
+        });
+        assertTrue("Media3 merge did not finish",done.await(175,TimeUnit.SECONDS));
+        assertNull("Merge failed: "+error.get(),error.get());
+        File merged=produced.get();
+        assertNotNull(merged);
+        outputFiles.add(merged);
+        MediaProbe.Info info=MediaProbe.inspect(merged);
+        assertTrue(info.video);assertTrue(info.audio);
+        assertTrue(containsCodec(merged,"video/avc"));
+        assertTrue(containsCodec(merged,"audio/mp4a-latm"));
+        assertTrue("Two 2-second clips should produce ~4s, got "+info.durationMs,
+                Math.abs(info.durationMs-4000)<750);
+        assertTrue("Merged A/V drift too large",
+                Math.abs(info.audioDurationMs-info.videoDurationMs)<450);
+    }
+
+    @Test(timeout=350000)
+    @SdkSuppress(minSdkVersion=35)
+    public void silentAndRotatedSourcesExportWithoutInventingAudio() throws Exception {
+        ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,
+                AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,0,1800)
+                .withQuality(OutputProfile.FULL_HD);
+        File noAudio=realExport(silent,options);
+        MediaProbe.Info output=MediaProbe.inspect(noAudio);
+        assertTrue(output.video);
+        assertFalse("Silent fixture must stay silent",output.audio);
+        assertTrue(containsCodec(noAudio,"video/avc"));
+        File upright=realExport(rotated,options);
+        MediaProbe.Info rotatedOutput=MediaProbe.inspect(upright);
+        assertTrue(rotatedOutput.video);
+        assertTrue(rotatedOutput.audio);
+        android.media.MediaMetadataRetriever md=new android.media.MediaMetadataRetriever();
+        try{
+            md.setDataSource(upright.getAbsolutePath());
+            int width=Integer.parseInt(md.extractMetadata(
+                    android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
+            int height=Integer.parseInt(md.extractMetadata(
+                    android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
+            String angle=md.extractMetadata(
+                    android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
+            if(angle!=null&&Integer.parseInt(angle)%180!=0){
+                int swap=width;width=height;height=swap;
+            }
+            assertEquals(1080,width);
+            assertEquals(1920,height);
+        }finally{md.release();}
+    }
+
+    @Test(timeout=245000)
+    @SdkSuppress(minSdkVersion=35)
+    public void mixedSoundAndSilentClipMergeDoesNotLoseVideoFrames() throws Exception {
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> produced=new AtomicReference<>();
+        AtomicReference<String> failure=new AtomicReference<>();
+        mergeEngine=new VideoMergeEngine();
+        inst.runOnMainSync(()->{
+            try{
+                mergeEngine.start(ctx,java.util.Arrays.asList(av,silent),
+                        OutputProfile.FULL_HD,new VideoMergeEngine.Listener(){
+                    @Override public void onCompleted(File file){
+                        produced.set(file);done.countDown();
+                    }
+                    @Override public void onFailure(String msg){
+                        failure.set(msg);done.countDown();
+                    }
+                });
+            }catch(Exception e){failure.set(e.toString());done.countDown();}
+        });
+        assertTrue("Mixed audio/silent merge timeout",done.await(185,TimeUnit.SECONDS));
+        assertNull("Mixed clip merge failure: "+failure.get(),failure.get());
+        File merged=produced.get();
+        assertNotNull("Merge callback returned no MP4",merged);
+        outputFiles.add(merged);
+        assertTrue("Merged output empty",merged.length()>1024);
+        MediaProbe.Info info=MediaProbe.inspect(merged);
+        assertTrue("Mixed composition must retain video",info.video);
+        assertTrue("Mixed composition must retain first clip audio",info.audio);
+        MediaProbe.SampleTimeline timeline=MediaProbe.inspectSampleTimeline(merged);
+        assertTrue("Mixed merge has no encoded video samples",timeline.videoSamples>40);
+        assertTrue("Mixed merge AAC samples missing",timeline.audioSamples>30);
+        assertTrue("Mixed-order audio samples finish more than 250ms from video",
+                timeline.lastPtsDriftMs()<=250);
+        assertTrue("No silent leg should truncate the second clip: "+info.durationMs,
+                Math.abs(info.durationMs-4000)<850);
+        assertTrue(containsCodec(merged,"video/avc"));
+        assertTrue(containsCodec(merged,"audio/mp4a-latm"));
+        assertTrue("A/V track should cover sequence within 500ms: "+
+                info.audioDurationMs+"/"+info.videoDurationMs,
+                Math.abs(info.audioDurationMs-info.videoDurationMs)<500);
+    }
+
+    @Test(timeout=260000)
+    @SdkSuppress(minSdkVersion=35)
+    public void reverseMixedMergePadsSilentFirstClipAndKeepsRealSamplePts()throws Exception{
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> produced=new AtomicReference<>();
+        AtomicReference<String> failure=new AtomicReference<>();
+        mergeEngine=new VideoMergeEngine();
+        inst.runOnMainSync(()->{
+            try{
+                mergeEngine.start(ctx,java.util.Arrays.asList(silent,av),
+                        OutputProfile.FULL_HD,new VideoMergeEngine.Listener(){
+                    @Override public void onCompleted(File file){
+                        produced.set(file);done.countDown();
+                    }
+                    @Override public void onFailure(String msg){
+                        failure.set(msg);done.countDown();
+                    }
+                });
+            }catch(Exception e){failure.set(e.toString());done.countDown();}
+        });
+        assertTrue("Reverse mixed merge timeout",done.await(190,TimeUnit.SECONDS));
+        assertNull("Reverse mixed merge error "+failure.get(),failure.get());
+        File output=produced.get();
+        assertNotNull(output);
+        outputFiles.add(output);
+        MediaProbe.Info tracks=MediaProbe.inspect(output);
+        assertTrue(tracks.video);
+        assertTrue("Second clip AAC must be retained",tracks.audio);
+        assertTrue(containsCodec(output,"video/avc"));
+        assertTrue(containsCodec(output,"audio/mp4a-latm"));
+        assertTrue("Four-second video sequence was truncated: "+tracks.durationMs,
+                Math.abs(tracks.durationMs-4000)<850);
+        MediaProbe.SampleTimeline actual=MediaProbe.inspectSampleTimeline(output);
+        assertTrue("Expected actual encoded video frames",actual.videoSamples>=40);
+        assertTrue("Expected actual encoded AAC samples",actual.audioSamples>=30);
+        assertTrue("Video presentation timestamps do not reach end of composition: "+actual.lastVideoUs,
+                actual.lastVideoUs>=3_400_000);
+        assertTrue("Audio presentation timestamps do not reach end of composition: "+actual.lastAudioUs,
+                actual.lastAudioUs>=3_300_000);
+        assertTrue("Real sample PTS drift exceeds 250ms, track metadata alone is insufficient: "+
+                        actual.lastPtsDriftMs()+"ms",actual.lastPtsDriftMs()<=250);
+        android.util.Log.i("WfsMediaPtsQA","reverseMixed videoSamples="+actual.videoSamples+
+                " audioSamples="+actual.audioSamples+
+                " videoLastUs="+actual.lastVideoUs+" audioLastUs="+actual.lastAudioUs+
+                " driftMs="+actual.lastPtsDriftMs());
+    }
+
+    @Test(timeout=160000)
+    @SdkSuppress(minSdkVersion=35)
+    public void cancelAfterRealMedia3ProgressPreservesOriginalAndCache() throws Exception {
+        cancelAtActualProgress(1);
+    }
+
+    @Test(timeout=160000) @SdkSuppress(minSdkVersion=35)
+    public void cancelLateInRealMedia3EncodePreservesOriginalAndCache() throws Exception {
+        cancelAtActualProgress(85);
+    }
+
+    private void cancelAtActualProgress(int minimumProgress) throws Exception {
+        // A longer RIGHTS-SAFE actual H264/AAC MP4 forces real async encoding.
+        Uri extended=importFixture("qa-h264-extended.mp4");
+        java.security.MessageDigest digest=java.security.MessageDigest.getInstance("SHA-256");
+        byte[] beforeHash;
+        try(InputStream in=ctx.getContentResolver().openInputStream(extended)){
+            assertNotNull(in);
+            byte[] buffer=new byte[32768];
+            for(int n;(n=in.read(buffer))>=0;){
+                if(n>0)digest.update(buffer,0,n);
+            }
+            beforeHash=digest.digest();
+        }
+        String[] initial=ctx.getCacheDir().list((dir,name)->
+                name.startsWith("storyboost_")&&name.endsWith(".mp4"));
+        java.util.Set<String> previous=new java.util.HashSet<>(java.util.Arrays.asList(
+                initial==null?new String[0]:initial));
+        java.util.concurrent.atomic.AtomicInteger callbacks=
+                new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger encodedProgress=
+                new java.util.concurrent.atomic.AtomicInteger(-1);
+        ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,
+                AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,0,0)
+                .withQuality(OutputProfile.FULL_HD);
+        engine=new VideoEngine();
+        inst.runOnMainSync(()->engine.start(ctx,extended,options,new VideoEngine.Listener(){
+            @Override public void onSuccess(File file,AspectRatioProfile.Size dimensions){
+                callbacks.incrementAndGet();
+                outputFiles.add(file);
+            }
+            @Override public void onError(String error){callbacks.incrementAndGet();}
+        }));
+        long deadline=android.os.SystemClock.uptimeMillis()+65000L;
+        java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+        while(android.os.SystemClock.uptimeMillis()<deadline&&callbacks.get()==0&&!cancelled.get()){
+            inst.runOnMainSync(()->{
+                int pct=engine.progress();
+                if(pct>=minimumProgress&&pct<100&&callbacks.get()==0){
+                    encodedProgress.set(pct);
+                    engine.cancel();
+                    cancelled.set(true);
+                }
+            });
+            if(!cancelled.get())android.os.SystemClock.sleep(40);
+        }
+        assertTrue("No in-flight cancellation at "+minimumProgress+"% was proven",cancelled.get());
+        android.os.SystemClock.sleep(1600);
+        assertEquals("Cancelled export emitted a success/error callback",0,callbacks.get());
+        String[] after=ctx.getCacheDir().list((dir,name)->
+                name.startsWith("storyboost_")&&name.endsWith(".mp4"));
+        for(String file:after==null?new String[0]:after)
+            assertTrue("In-progress cancellation leaked partial encoded MP4 "+file,
+                    previous.contains(file));
+        digest.reset();
+        try(InputStream in=ctx.getContentResolver().openInputStream(extended)){
+            assertNotNull(in);
+            byte[] buffer=new byte[32768];
+            for(int n;(n=in.read(buffer))>=0;){
+                if(n>0)digest.update(buffer,0,n);
+            }
+        }
+        assertArrayEquals("Cancellation mutated original MediaStore fixture",
+                beforeHash,digest.digest());
+        android.util.Log.i("WfsMediaCancelQA","PASS delayed Media3 cancellation at progress="+
+                encodedProgress.get()+"%, threshold="+minimumProgress+"%, no callback/cache leak, unchanged source bytes");
+    }
+
+    @Test(timeout=50000)
+    @SdkSuppress(minSdkVersion=35)
+    public void cancellationOfRunningEncoderDeletesItsTemporaryOutput() throws Exception {
+        String[] before=ctx.getCacheDir().list((folder,name)->name.startsWith("storyboost_")
+                &&name.endsWith(".mp4"));
+        final java.util.concurrent.atomic.AtomicInteger callbacks=
+                new java.util.concurrent.atomic.AtomicInteger();
+        engine=new VideoEngine();
+        ExportOptions options=new ExportOptions(ColorLooks.ORIGINAL,
+                AspectRatioProfile.PORTRAIT_9_16,AspectRatioProfile.FIT,true,0,2000)
+                .withQuality(OutputProfile.FULL_HD);
+        inst.runOnMainSync(()->engine.start(ctx,av,options,new VideoEngine.Listener(){
+            @Override public void onSuccess(File file,AspectRatioProfile.Size size){
+                callbacks.incrementAndGet();outputFiles.add(file);
+            }
+            @Override public void onError(String message){callbacks.incrementAndGet();}
+        }));
+        // start() has returned after Media3 begins the asynchronous transform.
+        inst.runOnMainSync(engine::cancel);
+        android.os.SystemClock.sleep(1100);
+        assertEquals("Cancellation must not report successful export",0,callbacks.get());
+        String[] after=ctx.getCacheDir().list((folder,name)->name.startsWith("storyboost_")
+                &&name.endsWith(".mp4"));
+        java.util.Set<String> prior=new java.util.HashSet<>(java.util.Arrays.asList(
+                before==null?new String[0]:before));
+        for(String name:after==null?new String[0]:after)
+            assertTrue("Cancel leaked cache MP4: "+name,prior.contains(name));
+    }
+}

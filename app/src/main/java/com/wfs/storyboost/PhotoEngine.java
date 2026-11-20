@@ -1,6 +1,7 @@
 package com.wfs.storyboost;
 
 import android.content.Context;
+import android.app.ActivityManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -31,14 +32,41 @@ public final class PhotoEngine {
     }
 
     public static Result process(Context context, Uri uri, ExportOptions settings) throws IOException {
-        Bitmap source = decode(context, uri, settings.fullHd ? 2880 : 1920);
+        validateAiSource(context,uri,settings);
+        // The exact-copy path is intentionally opt-in: Original preset + original
+        // aspect + Fit + Max Detail on JPEG. It preserves every original pixel
+        // and EXIF byte instead of recompressing an already compressed image.
+        if (PhotoPassthrough.allowed(settings,
+                context.getContentResolver().getType(uri))) {
+            AspectRatioProfile.Size nativeSize=MediaDimensions.read(context,uri);
+            try(InputStream in=context.getContentResolver().openInputStream(uri)){
+                if(in==null)throw new IOException("Gambar tidak tersedia.");
+                ByteArrayOutputStream exact=new ByteArrayOutputStream();
+                byte[] buffer=new byte[64*1024];
+                int n;
+                while((n=in.read(buffer))!=-1){
+                    if(exact.size()+n>36*1024*1024){ exact=null;break; }
+                    exact.write(buffer,0,n);
+                }
+                if(exact!=null) return new Result(exact.toByteArray(),nativeSize);
+            }
+        }
+        int maxSide = settings.qualityMode == OutputProfile.MAX_DETAIL
+                ? preferredDecodeLimit(context) : settings.fullHd ? 2880 : 1920;
+        Bitmap source = decode(context, uri, maxSide);
         if (source == null) throw new IOException("Foto tidak bisa dibaca.");
         Bitmap oriented = orient(context, uri, source);
         if (oriented != source) source.recycle();
 
         try {
+            if(settings.aiDenoise){
+                Bitmap restored=AiDenoiseEngine.process(context,oriented).bitmap;
+                oriented.recycle();
+                oriented=restored;
+            }
             AspectRatioProfile.Size size = AspectRatioProfile.resolve(settings.ratio,
-                    settings.fullHd, oriented.getWidth(), oriented.getHeight());
+                    settings.qualityMode, oriented.getWidth(), oriented.getHeight(), settings.frameStyle,
+                    settings.customWidth,settings.customHeight);
             int width = size.width, height = size.height;
             Bitmap output = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             try {
@@ -46,19 +74,26 @@ public final class PhotoEngine {
                 canvas.drawColor(Color.rgb(14, 19, 29));
                 Paint photoPaint = new Paint(Paint.ANTI_ALIAS_FLAG
                         | Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
-                photoPaint.setColorFilter(colorFilter(settings.preset));
+                photoPaint.setColorFilter(colorFilter(settings));
                 if (settings.frameStyle == AspectRatioProfile.BLUR) {
                     drawBlurredBackground(canvas, oriented, width, height);
                 }
                 FrameMath.Bounds b = FrameMath.center(oriented.getWidth(), oriented.getHeight(),
-                        width, height, settings.frameStyle);
-                canvas.drawBitmap(oriented, null,
-                        new RectF(b.left, b.top, b.right, b.bottom), photoPaint);
+                        width, height, settings.frameStyle, settings.focusX, settings.focusY);
+                if(settings.portraitBokeh){
+                    AiPortraitCompositor.draw(canvas,oriented,width,height,b,photoPaint);
+                }else{
+                    canvas.drawBitmap(oriented,null,
+                            new RectF(b.left,b.top,b.right,b.bottom),photoPaint);
+                }
+                if(settings.hasText())new CaptionRenderer().draw(canvas,settings.caption,
+                        settings.captionColor,settings.socialProfile,width,height);
 
                 // Avoid excessive halos and memory usage on large images.
-                sharpen(output, width, height, settings.preset == 0 ? 0.12f : settings.preset == 3 ? 0.11f : 0.17f);
+                // No destructive per-pixel sharpening: it created halos and memory
+                // spikes on 4K output. Bicubic/filtered scaling is done by Canvas.
                 try (ByteArrayOutputStream bytes = new ByteArrayOutputStream()) {
-                    if (!output.compress(Bitmap.CompressFormat.JPEG, 95, bytes)) {
+                    if (!output.compress(Bitmap.CompressFormat.JPEG, 98, bytes)) {
                         throw new IOException("Gagal mengenkode JPEG.");
                     }
                     return new Result(bytes.toByteArray(), size);
@@ -73,6 +108,29 @@ public final class PhotoEngine {
         }
     }
 
+    /** Reject oversized source images before downsampling preview or allocating bitmaps.
+     * A smaller preview must never imply the full-resolution export will succeed.
+     */
+    private static void validateAiSource(Context context,Uri uri,ExportOptions settings)
+            throws IOException{
+        if(!settings.aiDenoise)return;
+        AspectRatioProfile.Size nativeSize=MediaDimensions.read(context,uri);
+        if(nativeSize.width<=0||nativeSize.height<=0)
+            throw new IOException("Ukuran sumber foto tidak dapat diketahui");
+        if((long)nativeSize.width*nativeSize.height>2_600_000L)
+            throw new IOException("DnCNN v3 beta mendukung maksimal 2,6 MP. "+
+                    "Foto asli tidak diperkecil secara diam-diam; pilih foto lebih kecil.");
+    }
+
+    /** Upright, bounded preview of the entire photo for ML Kit on-device inference. */
+    public static Bitmap aiInput(Context context,Uri uri)throws IOException{
+        Bitmap source=decode(context,uri,1200);
+        if(source==null)throw new IOException("Foto tidak terbaca.");
+        Bitmap oriented=orient(context,uri,source);
+        if(oriented!=source)source.recycle();
+        return oriented;
+    }
+
     /** Renders the untouched photo in the same output frame, downsampled for comparison UI. */
     public static Bitmap originalPreview(Context context, Uri uri, ExportOptions settings)
             throws IOException {
@@ -81,7 +139,8 @@ public final class PhotoEngine {
         if (oriented != source) source.recycle();
         try {
             AspectRatioProfile.Size resolved = AspectRatioProfile.resolve(settings.ratio,
-                    settings.fullHd, oriented.getWidth(), oriented.getHeight());
+                    settings.qualityMode, oriented.getWidth(), oriented.getHeight(), settings.frameStyle,
+                    settings.customWidth,settings.customHeight);
             float shrink = Math.min(1f, 800f / Math.max(resolved.width, resolved.height));
             int width = Math.max(2, Math.round(resolved.width * shrink));
             int height = Math.max(2, Math.round(resolved.height * shrink));
@@ -92,7 +151,7 @@ public final class PhotoEngine {
                 drawBlurredBackground(canvas, oriented, width, height);
             }
             FrameMath.Bounds b = FrameMath.center(oriented.getWidth(), oriented.getHeight(),
-                    width, height, settings.frameStyle);
+                    width, height, settings.frameStyle, settings.focusX, settings.focusY);
             Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
             canvas.drawBitmap(oriented, null,
                     new RectF(b.left, b.top, b.right, b.bottom), paint);
@@ -102,6 +161,60 @@ public final class PhotoEngine {
         } finally {
             oriented.recycle();
         }
+    }
+
+    /**
+     * ML-based portrait preview at screen size. Its mask is independently generated
+     * from an upright downsampled source; color matrix is burned into bitmap.
+     */
+    public static Bitmap portraitPreview(Context context,Uri uri,ExportOptions settings)
+            throws IOException {
+        return enhancedPreview(context,uri,settings);
+    }
+
+    /** Uses the exact same real model and framing/color operations as JPEG export. */
+    public static Bitmap enhancedPreview(Context context,Uri uri,ExportOptions settings)
+            throws IOException {
+        validateAiSource(context,uri,settings);
+        Bitmap source=decode(context,uri,settings.aiDenoise?720:1200);
+        if(source==null)throw new IOException("Foto tidak dapat dibaca");
+        Bitmap oriented=orient(context,uri,source);
+        if(oriented!=source)source.recycle();
+        Bitmap output=null;
+        try{
+            if(settings.aiDenoise){
+                Bitmap restored=AiDenoiseEngine.process(context,oriented).bitmap;
+                oriented.recycle();
+                oriented=restored;
+            }
+            AspectRatioProfile.Size target=AspectRatioProfile.resolve(settings.ratio,
+                    settings.qualityMode,oriented.getWidth(),oriented.getHeight(),
+                    settings.frameStyle,settings.customWidth,settings.customHeight);
+            double factor=Math.min(1d,800d/Math.max(target.width,target.height));
+            int w=Math.max(2,(int)Math.round(target.width*factor));
+            int h=Math.max(2,(int)Math.round(target.height*factor));
+            output=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);
+            Canvas canvas=new Canvas(output);
+            canvas.drawColor(Color.rgb(14,19,29));
+            if(settings.frameStyle==AspectRatioProfile.BLUR)
+                drawBlurredBackground(canvas,oriented,w,h);
+            Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+            p.setColorFilter(colorFilter(settings));
+            FrameMath.Bounds b=FrameMath.center(oriented.getWidth(),oriented.getHeight(),
+                    w,h,settings.frameStyle,settings.focusX,settings.focusY);
+            if(settings.portraitBokeh)
+                AiPortraitCompositor.draw(canvas,oriented,w,h,b,p);
+            else
+                canvas.drawBitmap(oriented,null,new RectF(b.left,b.top,b.right,b.bottom),p);
+            // Caption remains a separate live overlay in StudioEditorActivity.
+            return output;
+        }catch(IOException|RuntimeException e){
+            if(output!=null)output.recycle();
+            throw e;
+        }catch(OutOfMemoryError oom){
+            if(output!=null)output.recycle();
+            throw new IOException("RAM tidak cukup untuk preview AI. Gunakan resolusi HD.",oom);
+        }finally{oriented.recycle();}
     }
 
     /** JPEG byte preview is decoded at screen resolution rather than 2-megapixel size. */
@@ -117,7 +230,7 @@ public final class PhotoEngine {
         return BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, opts);
     }
 
-    private static void drawBlurredBackground(Canvas canvas, Bitmap source,
+    static void drawBlurredBackground(Canvas canvas, Bitmap source,
                                                int width, int height) {
         // Downsample + double box blur for a soft fill; foreground stays untouched.
         final int lowW = 64;
@@ -139,6 +252,31 @@ public final class PhotoEngine {
         }
     }
 
+    /** Blur follows the same fitted/cropped rectangle as the sharp subject mask.
+     * The full-frame soft fill is intentional only outside a FIT letterbox.
+     */
+    static void drawPortraitBlurredBackground(Canvas canvas,Bitmap source,
+            int width,int height,FrameMath.Bounds bounds,Paint colorPaint){
+        drawBlurredBackground(canvas,source,width,height);
+        int smallW=Math.min(144,Math.max(64,source.getWidth()/5));
+        int smallH=Math.max(24,Math.round(smallW*(float)source.getHeight()/source.getWidth()));
+        Bitmap small=Bitmap.createScaledBitmap(source,smallW,smallH,true);
+        try{
+            int[] px=new int[smallW*smallH];
+            small.getPixels(px,0,smallW,0,0,smallW,smallH);
+            blur(px,smallW,smallH,5);
+            blur(px,smallW,smallH,5);
+            small.setPixels(px,0,smallW,0,0,smallW,smallH);
+            Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+            paint.setColorFilter(colorPaint.getColorFilter());
+            canvas.save();
+            canvas.clipRect(0,0,width,height);
+            canvas.drawBitmap(small,null,
+                    new RectF(bounds.left,bounds.top,bounds.right,bounds.bottom),paint);
+            canvas.restore();
+        }finally{small.recycle();}
+    }
+
     private static void blur(int[] px, int w, int h, int radius) {
         int[] copy = px.clone();
         for (int y = 0; y < h; y++) {
@@ -153,6 +291,13 @@ public final class PhotoEngine {
                 px[y * w + x] = Color.rgb(red / n, green / n, blue / n);
             }
         }
+    }
+
+    /** Avoid forced 2x JPEG downsampling on phones with enough memory for 4K sources. */
+    private static int preferredDecodeLimit(Context context) {
+        ActivityManager manager = (ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+        int heapMb = manager == null ? 192 : manager.getLargeMemoryClass();
+        return heapMb >= 384 ? 6144 : 4096;
     }
 
     private static Bitmap decode(Context context, Uri uri, int maxSide) throws IOException {
@@ -199,25 +344,30 @@ public final class PhotoEngine {
         return Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), matrix, true);
     }
 
-    private static ColorMatrixColorFilter colorFilter(int preset) {
-        float sat = preset == 0 ? 1.055f : preset == 1 ? 1.12f
-                : preset == 2 ? 1.21f : 1.075f;
-        float contrast = preset == 0 ? 1.035f : preset == 1 ? 1.07f
-                : preset == 2 ? 1.095f : 1.025f;
-        float red = preset == 0 ? 1.01f : preset == 3 ? 1.018f : 1.045f;
-        float blue = preset == 1 ? 0.99f : 1.01f;
-        float lift = preset == 3 ? 10f : 0f;
-        ColorMatrix matrix = new ColorMatrix();
+    /** Shared look parameters: photo preview and exported JPEG always use same matrix. */
+    static ColorMatrixColorFilter colorFilter(int preset){
+        return makeColorFilter(preset,0f,0f,0f);
+    }
+    static ColorMatrixColorFilter colorFilter(ExportOptions opts){
+        if(ColorLooks.isOriginal(opts.preset)&&!opts.hasColorAdjustments())return null;
+        return makeColorFilter(opts.preset,opts.brightness,opts.contrast,opts.saturation);
+    }
+    private static ColorMatrixColorFilter makeColorFilter(int preset,float brightness,
+                                                          float userContrast,float userSaturation){
+        ColorLooks.Look look=ColorLooks.get(preset);
+        float sat=Math.max(0f,Math.min(2.3f,look.saturation+userSaturation*.65f));
+        float contrast=Math.max(.55f,Math.min(1.55f,look.contrast+userContrast*.30f));
+        float lift=look.lift+brightness*38f;
+        ColorMatrix matrix=new ColorMatrix();
         matrix.setSaturation(sat);
         matrix.postConcat(new ColorMatrix(new float[]{
-                contrast * red, 0, 0, 0, lift + 3 - 128 * (contrast - 1),
-                0, contrast * 1.01f, 0, 0, lift + 2 - 128 * (contrast - 1),
-                0, 0, contrast * blue, 0, lift + 2 - 128 * (contrast - 1),
-                0, 0, 0, 1, 0
+                contrast*look.red,0,0,0,lift-(contrast-1f)*128f,
+                0,contrast*look.green,0,0,lift-(contrast-1f)*128f,
+                0,0,contrast*look.blue,0,lift-(contrast-1f)*128f,
+                0,0,0,1,0
         }));
         return new ColorMatrixColorFilter(matrix);
     }
-
     private static void sharpen(Bitmap image, int width, int height, float strength) {
         int[] src = new int[width * height];
         image.getPixels(src, 0, width, 0, 0, width, height);

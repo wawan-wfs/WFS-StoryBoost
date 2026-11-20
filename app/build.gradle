@@ -2,23 +2,70 @@ plugins {
     id 'com.android.application'
 }
 
+// A stable release-signing key must be provided privately through CI secrets or
+// ORG_GRADLE_PROJECT_* environment variables. Never commit the key or passwords.
+def signingProperties = ['storyboostKeystoreFile', 'storyboostKeystorePassword',
+                         'storyboostKeyAlias', 'storyboostKeyPassword']
+def stableSigningReady = signingProperties.every {
+    project.hasProperty(it) && project.property(it).toString().trim().length() > 0
+}
+
 android {
     namespace 'com.wfs.storyboost'
     compileSdk 36
 
+    // ABI-specific APKs minimize download size for phones using only one CPU ABI.
+    // Universal APK remains available for compatibility including older 32-bit phones.
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'
+            universalApk true
+        }
+    }
+
     defaultConfig {
-        applicationId 'com.wfs.storyboost'
+        // v1.4–v1.6 used the same app ID with different ephemeral debug certificates,
+        // causing INSTALL_FAILED_UPDATE_INCOMPATIBLE. New package installs side by side.
+        applicationId 'com.wfs.storyboost.studio'
         minSdk 29
         targetSdk 35
-        versionCode 4
-        versionName '1.4.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        versionCode 34
+        versionName '3.0.0-beta3'
+    }
+
+    signingConfigs {
+        stableRelease {
+            if (stableSigningReady) {
+                storeFile file(project.property('storyboostKeystoreFile'))
+                storePassword project.property('storyboostKeystorePassword').toString()
+                keyAlias project.property('storyboostKeyAlias').toString()
+                keyPassword project.property('storyboostKeyPassword').toString()
+                enableV1Signing true
+                enableV2Signing true
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            // Debug signatures may change between GitHub runners. For upgrades use
+            // stableRelease with private signing credentials instead.
+            applicationIdSuffix ''
+        }
         release {
             minifyEnabled false
+            if (stableSigningReady) {
+                signingConfig signingConfigs.stableRelease
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+
+    androidResources {
+        noCompress 'tflite'
     }
 
     compileOptions {
@@ -28,7 +75,20 @@ android {
 }
 
 dependencies {
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test:core:1.6.1'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.6.1'
+    androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-intents:3.6.1'
+    // Universal CPU-capable neural inference; model weights are MIT licensed.
+    implementation 'org.tensorflow:tensorflow-lite:2.17.0'
     implementation 'androidx.media3:media3-transformer:1.11.1'
     implementation 'androidx.media3:media3-effect:1.11.1'
     implementation 'androidx.media3:media3-common:1.11.1'
+    // Bundled on-device ML models: no photo upload or first-run model download.
+    implementation 'com.google.mlkit:face-detection:16.1.7'
+    implementation 'com.google.mlkit:image-labeling:17.0.9'
+    // Bundled offline ML selfie segmentation (beta), used only for still-photo portrait bokeh.
+    implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
 }

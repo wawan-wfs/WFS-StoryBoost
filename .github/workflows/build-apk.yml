@@ -1,21 +1,26 @@
-name: Build WFS StoryBoost APK
+name: Build and verify WFS StoryBoost APK
+
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches: [main, master, 'qa/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
-  android-debug-apk:
+  build:
+    name: Build, sign and inspect APK
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Configure Android SDK from runner
+      - name: Configure Android SDK
         shell: bash
         run: |
           echo "ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}" >> "$GITHUB_ENV"
@@ -23,18 +28,310 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.13'
-      - name: Install Android API 36
-        shell: bash
+      - name: Install SDK and build tools
         run: |
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 
-      - name: Run geometry regression tests (27 cases)
+          sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - name: Geometry regression suite
         run: bash scripts/test-ratio-geometry.sh
-      - name: Build installable debug APK
-        run: gradle --no-daemon :app:assembleDebug
-      - name: Upload APK
+      - name: Fetch verified Qualcomm DnCNN model
+        run: bash scripts/fetch-dncnn-model.sh
+      - name: Build debug APK
+        run: gradle --no-daemon :app:assembleDebug :qa-provider:assembleDebug
+      - name: Verify debug APK signature, manifest, launcher and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          for ABI in arm64-v8a universal; do
+            APK="app/build/outputs/apk/debug/app-${ABI}-debug.apk"
+            test -s "$APK"
+            unzip -t "$APK" | tail -1
+            "$TOOLS/zipalign" -c -p 4 "$APK"
+            "$TOOLS/apksigner" verify --min-sdk-version 29 --verbose --print-certs "$APK"
+            "$TOOLS/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging-$ABI.txt"
+            grep -q "package: name='com.wfs.storyboost.studio'" "$RUNNER_TEMP/apk-badging-$ABI.txt"
+            grep -q "application-label:'WFS StoryBoost'" "$RUNNER_TEMP/apk-badging-$ABI.txt"
+            grep -q "com.wfs.storyboost.StudioHomeActivity" "$RUNNER_TEMP/apk-badging-$ABI.txt"
+            # The independent synthetic provider belongs ONLY in its QA APK.
+            # Never accidentally package its exported test-only control receiver
+            # or MANAGE_DOCUMENTS provider into the consumer app.
+            "$TOOLS/aapt" dump xmltree "$APK" AndroidManifest.xml > "$RUNNER_TEMP/apk-manifest-$ABI.txt"
+            if grep -Fq 'com.wfs.storyboost.qaprovider' "$RUNNER_TEMP/apk-manifest-$ABI.txt"; then
+              echo "SECURITY: independent QA DocumentsProvider leaked into consumer APK" >&2
+              exit 1
+            fi
+            unzip -Z1 "$APK" | grep -q '^res/mipmap-anydpi-v26/ic_launcher'
+            unzip -Z1 "$APK" | grep -q '^assets/models/dncnn_25[.]tflite$'
+            echo "- $ABI APK validated: $(du -h "$APK" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "### Debug APKs validated" >> "$GITHUB_STEP_SUMMARY"
+          echo "Install package: com.wfs.storyboost.studio (Android 10+)." >> "$GITHUB_STEP_SUMMARY"
+          echo "Debug certificates may change between runs; use stable release signing for upgrades." >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish optimized ARM64 APK
         uses: actions/upload-artifact@v4
         with:
-          name: WFS-StoryBoost-v1.4.0-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: WFS-StoryBoost-v3.0.0-beta3-ARM64-APK
+          path: app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
           if-no-files-found: error
+      - name: Publish Universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-v3.0.0-beta3-Universal-APK
+          path: app/build/outputs/apk/debug/app-universal-debug.apk
+          if-no-files-found: error
+      - name: Configure stable release signing if secrets exist
+        id: signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STORYBOOST_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.STORYBOOST_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.STORYBOOST_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STORYBOOST_KEY_PASSWORD }}
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" || -z "$KEYSTORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets not set; only debug APK will be published." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/storyboost-release.jks"
+          echo "ORG_GRADLE_PROJECT_storyboostKeystoreFile=$RUNNER_TEMP/storyboost-release.jks" >> "$GITHUB_ENV"
+          echo "ORG_GRADLE_PROJECT_storyboostKeystorePassword=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ORG_GRADLE_PROJECT_storyboostKeyAlias=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "ORG_GRADLE_PROJECT_storyboostKeyPassword=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Build and verify stable signed release APK
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          gradle --no-daemon :app:assembleRelease
+          TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          for ABI in arm64-v8a universal; do
+            APK="app/build/outputs/apk/release/app-${ABI}-release.apk"
+            "$TOOLS/zipalign" -c -p 4 "$APK"
+            "$TOOLS/apksigner" verify --min-sdk-version 29 --verbose --print-certs "$APK"
+            "$TOOLS/aapt" dump badging "$APK" | grep "package: name='com.wfs.storyboost.studio'"
+          done
+      - name: Publish stable signed release APKs
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-v3.0.0-beta3-Release-Signed
+          path: |
+            app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            app/build/outputs/apk/release/app-universal-release.apk
+          if-no-files-found: error
+
+  install-smoke:
+    name: Android 35 emulator install and launch
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: WFS-StoryBoost-v3.0.0-beta3-Universal-APK
+          path: smoke-apk
+      - name: Allow Android emulator KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Install and launch in Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            adb install smoke-apk/app-universal-debug.apk
+            adb shell am start -W -n com.wfs.storyboost.studio/com.wfs.storyboost.StudioHomeActivity
+            sleep 4
+            adb shell pidof com.wfs.storyboost.studio
+            adb exec-out screencap -p > storyboost-home.png
+            test -s storyboost-home.png
+            # Bottom tabs at x=160 (Editor), x=267 (Hasil) on the 320x640 emulator.
+            adb shell am force-stop com.wfs.storyboost.studio
+            adb shell am start -W -n com.wfs.storyboost.studio/com.wfs.storyboost.StudioHomeActivity --ez qa_demo true
+            sleep 6
+            adb shell pidof com.wfs.storyboost.studio
+            adb shell dumpsys activity activities | grep -q 'StudioEditorActivity'
+            adb exec-out screencap -p > storyboost-editor.png
+            test -s storyboost-editor.png
+            adb shell am force-stop com.wfs.storyboost.studio
+            adb shell am start -W -n com.wfs.storyboost.studio/com.wfs.storyboost.StudioHomeActivity --ez qa_merge true
+            sleep 3
+            adb shell pidof com.wfs.storyboost.studio
+            adb shell dumpsys activity activities | grep -q 'StudioMergeActivity'
+            adb exec-out screencap -p > storyboost-merge.png
+            test -s storyboost-merge.png
+            # Exercise bundled ML models on offline-generated demo and verify UI stays alive.
+            adb shell am force-stop com.wfs.storyboost.studio
+            adb shell am start -W -n com.wfs.storyboost.studio/com.wfs.storyboost.StudioHomeActivity --ez qa_ai_demo true
+            sleep 12
+            adb shell pidof com.wfs.storyboost.studio
+            adb shell dumpsys activity activities | grep -q 'StudioEditorActivity'
+            adb exec-out screencap -p > storyboost-ai-photo.png
+            test -s storyboost-ai-photo.png
+            # Script is one command: emulator runner executes script lines separately.
+            bash scripts/qa-emulator-photo.sh
+            bash scripts/qa-emulator-screen-sizes.sh
+
+      - name: Upload real app screenshot for UI inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-v3.0.0-beta3-Emulator-Screenshot
+          path: |
+            storyboost-*.png
+            qa-photo-export.txt
+            qa-photo-memory.txt
+          if-no-files-found: error
+  
+  persisted-editor-qa:
+    name: Android ${{ matrix.api }} instrumented editor/media and process-death
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          echo "ANDROID_HOME=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}" >> "$GITHUB_ENV"
+          echo "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Install test platform and media fixture dependencies
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+      - name: Allow Android emulator KVM
+        run: |
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Execute Activity integration tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          # API29 clamps wm size to twice the AVD's native display.
+          # Use a large display profile so 1080x2400 is genuinely reachable.
+          profile: pixel_6
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            bash scripts/qa-video-fixtures.sh
+            bash scripts/fetch-dncnn-model.sh
+            gradle --no-daemon :app:connectedDebugAndroidTest
+            bash scripts/qa-process-death-local.sh
+            bash scripts/qa-process-death-pending.sh
+            WFS_RECOVER_EMULATOR_LAUNCHER=1 bash scripts/qa-process-death-saf.sh
+            # A distinct acceptance pass keeps Photos installed/enabled; it
+            # verifies DocumentsUI coexistence, NOT Photo-provider URI grants.
+            WFS_RECOVER_EMULATOR_LAUNCHER=1 WFS_PHOTOS_ENABLED=1 bash scripts/qa-process-death-saf.sh
+            # Keep neural memory evidence independent of provider picker flakes.
+            bash scripts/qa-dncnn-memory.sh
+            bash scripts/qa-dncnn-thread-matrix.sh
+            bash scripts/qa-dncnn-backend-matrix.sh
+            bash scripts/qa-external-provider.sh
+            bash scripts/qa-editor-viewports.sh
+      - name: Verify matching ARM64 hardware QA APK pair
+        if: matrix.api == 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          app="app/build/outputs/apk/debug/app-arm64-v8a-debug.apk"
+          test="app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
+          for apk in "$app" "$test"; do
+            "$tools/apksigner" verify --min-sdk-version 29 "$apk"
+          done
+          signer() { "$tools/apksigner" verify --print-certs "$1" | awk '/Signer #1 certificate SHA-256 digest:/{print $NF}'; }
+          app_cert="$(signer "$app")"
+          test_cert="$(signer "$test")"
+          test -n "$app_cert" && test "$app_cert" = "$test_cert"
+          printf 'sourceCommit=%s\ndebugSignerSha256=%s\n' "${{ github.event.pull_request.head.sha || github.sha }}" "$app_cert" > qa-hdr-phone-package.txt
+          sha256sum "$app" "$test" >> qa-hdr-phone-package.txt
+      - name: Publish synthetic hardware QA APK pair
+        if: matrix.api == 35
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta14-ARM64-HDR-QA-Pair
+          path: |
+            app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+            app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            qa-hdr-phone-package.txt
+          if-no-files-found: error
+      - name: Upload crop and caption viewport pixel results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta10-Viewport-Pixels-API${{ matrix.api }}
+          path: qa-editor-viewports/
+          if-no-files-found: warn
+      - name: Upload beta6 XNNPACK backend-isolation memory comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta6-DnCNN-Backend-API${{ matrix.api }}
+          path: qa-backend-matrix/
+          if-no-files-found: warn
+      - name: Publish independent provider acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta5-External-Provider-API${{ matrix.api }}
+          path: qa-provider-results/
+          if-no-files-found: warn
+      - name: Publish abrupt-autosave process-death proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta4-Abrupt-Autosave-API${{ matrix.api }}
+          path: qa-autosave/
+          if-no-files-found: warn
+      - name: Publish real DocumentsUI picker failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta3-DocumentsUI-Diagnostics-API${{ matrix.api }}
+          path: |
+            qa-picker-failure.png
+            qa-picker-failure.xml
+          if-no-files-found: warn
+      - name: Upload repeat-process DnCNN memory evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta4-DnCNN-Memory-API${{ matrix.api }}
+          path: qa-memory/
+          if-no-files-found: warn
+      - name: Upload API-specific cold-process CPU threading matrix
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta5-DnCNN-Thread-Matrix-API${{ matrix.api }}
+          path: qa-thread-matrix/
+          if-no-files-found: warn
+      - name: Publish Android instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta3-Android-${{ matrix.api }}-Test-Reports
+          path: |
+            app/build/outputs/androidTest-results/connected/
+            app/build/reports/androidTests/connected/
+          if-no-files-found: warn

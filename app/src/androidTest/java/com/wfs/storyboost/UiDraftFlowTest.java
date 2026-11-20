@@ -1,0 +1,406 @@
+package com.wfs.storyboost;
+
+import static androidx.test.espresso.intent.Intents.intending;
+import static androidx.test.espresso.intent.matcher.IntentMatchers.hasAction;
+import static org.junit.Assert.*;
+
+import android.app.Activity;
+import android.app.Instrumentation;
+import android.content.ContentValues;
+import android.content.Context;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.net.Uri;
+import android.provider.MediaStore;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.EditText;
+import android.widget.Switch;
+import android.widget.TextView;
+
+import androidx.test.core.app.ActivityScenario;
+import androidx.test.espresso.intent.Intents;
+import androidx.test.uiautomator.By;
+import androidx.test.uiautomator.UiDevice;
+import androidx.test.uiautomator.UiObject2;
+import androidx.test.uiautomator.Until;
+import androidx.test.ext.junit.runners.AndroidJUnit4;
+import androidx.test.platform.app.InstrumentationRegistry;
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
+import androidx.test.runner.lifecycle.Stage;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.security.MessageDigest;
+import java.util.Collection;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * Runs real Activities, local MediaStore, editor UI controls, persistence and JPEG
+ * export on API 29/35. ACTION_OPEN_DOCUMENT result is STUBBED; this is not a
+ * system DocumentsUI picker interaction or a process-death test.
+ */
+@RunWith(AndroidJUnit4.class)
+public class UiDraftFlowTest {
+    private final Instrumentation instrument=InstrumentationRegistry.getInstrumentation();
+    private Context target;
+    private Uri source;
+    private byte[] originalDigest;
+    private boolean intentsInitialized;
+
+    @Before public void setup() throws Exception {
+        target=instrument.getTargetContext();
+        target.getSharedPreferences("studio-projects",Context.MODE_PRIVATE).edit().clear().commit();
+        StudioDraftStore.clearAll(target);
+        ContentValues values=new ContentValues();
+        values.put(MediaStore.Images.Media.DISPLAY_NAME,"wfs-qa-"+System.nanoTime()+".jpg");
+        values.put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg");
+        values.put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/WFS-StoryBoost-QA");
+        source=target.getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);
+        assertNotNull("Failed to create local synthetic JPEG",source);
+        Bitmap image=Bitmap.createBitmap(640,960,Bitmap.Config.ARGB_8888);
+        try{
+            for(int y=0;y<960;y++)for(int x=0;x<640;x++)
+                image.setPixel(x,y,Color.rgb((x*3+y)%256,(y*2)%256,(x+y)%256));
+            try(OutputStream out=target.getContentResolver().openOutputStream(source)){
+                assertNotNull(out);
+                assertTrue(image.compress(Bitmap.CompressFormat.JPEG,93,out));
+            }
+        }finally{image.recycle();}
+        originalDigest=digest(source);
+    }
+
+    @After public void cleanup(){
+        if(intentsInitialized){Intents.release();intentsInitialized=false;}
+        if(source!=null)try{target.getContentResolver().delete(source,null,null);}catch(Exception ignored){}
+        StudioDraftStore.clearAll(target);
+        target.getSharedPreferences("studio-projects",Context.MODE_PRIVATE).edit().clear().commit();
+    }
+
+    private byte[] digest(Uri uri) throws Exception {
+        MessageDigest hash=MessageDigest.getInstance("SHA-256");
+        try(InputStream in=target.getContentResolver().openInputStream(uri)){
+            assertNotNull(in);
+            byte[] bytes=new byte[8192];
+            for(int n;(n=in.read(bytes))!=-1;)hash.update(bytes,0,n);
+        }
+        return hash.digest();
+    }
+    private void idle(){instrument.waitForIdleSync();}
+    private static View locate(View root,String label,boolean description){
+        if(root==null)return null;
+        if(description&&root.getContentDescription()!=null
+                &&root.getContentDescription().toString().contains(label))return root;
+        if(!description&&root instanceof TextView
+                &&((TextView)root).getText().toString().contains(label))return root;
+        if(root instanceof ViewGroup){
+            ViewGroup group=(ViewGroup)root;
+            for(int n=0;n<group.getChildCount();n++){
+                View found=locate(group.getChildAt(n),label,description);
+                if(found!=null)return found;
+            }
+        }
+        return null;
+    }
+    private static View input(View root){
+        if(root instanceof EditText)return root;
+        if(root instanceof ViewGroup){
+            ViewGroup group=(ViewGroup)root;
+            for(int n=0;n<group.getChildCount();n++){
+                View found=input(group.getChildAt(n));
+                if(found!=null)return found;
+            }
+        }
+        return null;
+    }
+    private static View locateExactText(View root,String label){
+        if(root==null)return null;
+        if(root instanceof TextView&&((TextView)root).getText().toString().equals(label))
+            return root;
+        if(root instanceof ViewGroup){
+            ViewGroup group=(ViewGroup)root;
+            for(int i=0;i<group.getChildCount();i++){
+                View child=locateExactText(group.getChildAt(i),label);
+                if(child!=null)return child;
+            }
+        }
+        return null;
+    }
+    private static View require(Activity a,String label,boolean description){
+        View root=a.getWindow().getDecorView();
+        View found=description?null:locateExactText(root,label);
+        if(found==null)found=locate(root,label,description);
+        assertNotNull("Missing UI control "+label,found);
+        return found;
+    }
+    private static void tap(Activity a,String label,boolean description){
+        View target=require(a,label,description);
+        while(target!=null&&!target.isClickable()){
+            if(!(target.getParent() instanceof View))break;
+            target=(View)target.getParent();
+        }
+        assertNotNull("Not clickable "+label,target);
+        assertTrue("Click failed "+label,target.performClick());
+    }
+    // Must only be called on main thread: no nested runOnMainSync.
+    private StudioEditorActivity resumedEditorUnsafe(){
+        for(Activity a:ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED))
+            if(a instanceof StudioEditorActivity)return (StudioEditorActivity)a;
+        throw new AssertionError("Editor was not RESUMED during crop measurement");
+    }
+    private StudioEditorActivity resumedEditor(){
+        long timeout=android.os.SystemClock.uptimeMillis()+6000L;
+        do{
+            AtomicReference<StudioEditorActivity> result=new AtomicReference<>();
+            instrument.runOnMainSync(()->{
+                Collection<Activity> resumed=ActivityLifecycleMonitorRegistry.getInstance()
+                        .getActivitiesInStage(Stage.RESUMED);
+                for(Activity a:resumed)
+                    if(a instanceof StudioEditorActivity)result.set((StudioEditorActivity)a);
+            });
+            if(result.get()!=null)return result.get();
+            android.os.SystemClock.sleep(140);
+            idle();
+        }while(android.os.SystemClock.uptimeMillis()<timeout);
+        return null;
+    }
+    private ActivityScenario<StudioHomeActivity> importWithSafResult(){
+        Intents.init();
+        intentsInitialized=true;
+        Intent chosen=new Intent().setData(source)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        intending(hasAction(Intent.ACTION_OPEN_DOCUMENT))
+                .respondWith(new Instrumentation.ActivityResult(Activity.RESULT_OK,chosen));
+        ActivityScenario<StudioHomeActivity> home=ActivityScenario.launch(StudioHomeActivity.class);
+        home.onActivity(a->tap(a,"Photo Editor",false));
+        idle();
+        assertNotNull("SAF result should open a real editor",resumedEditor());
+        return home;
+    }
+    private void act(java.util.function.Consumer<StudioEditorActivity> step){
+        StudioEditorActivity editor=resumedEditor();
+        assertNotNull("Expected resumed editor",editor);
+        instrument.runOnMainSync(()->step.accept(editor));
+        idle();
+    }
+    private void back(){
+        act(Activity::finish);
+        idle();
+    }
+
+    @Test public void editedPhotoRestoresFromRecentAndExportsWithoutMutatingSource() throws Exception {
+        // Close the original Home Activity too: Recent is exercised from a newly
+        // launched Home, rather than invoking an old background Activity instance.
+        try(ActivityScenario<StudioHomeActivity> first=importWithSafResult()){
+            act(a->{
+                tap(a,"Color Look: Vibrant",true);
+                tap(a,"Frame",false);
+                tap(a,"Crop",false);
+                tap(a,"Teks",false);
+                EditText field=(EditText)input(a.getWindow().getDecorView());
+                assertNotNull("Caption input missing",field);
+                field.setText("DRAFT 29-35");
+                tap(a,"☷  Ekspor",false);
+                tap(a,"1080p",false);
+                tap(a,"AI Photo",false);
+                Switch bokeh=(Switch)require(a,"Aktifkan AI Portrait Bokeh",true);
+                bokeh.setChecked(true);
+                bokeh.setChecked(false);
+            });
+            back();
+        }
+        StudioDraftStore.Draft saved=StudioDraftStore.load(target,source);
+        assertNotNull("onPause did not commit draft",saved);
+        assertEquals(2,saved.options.preset);
+        assertEquals(AspectRatioProfile.CROP,saved.options.frameStyle);
+        assertEquals(OutputProfile.FULL_HD,saved.options.qualityMode);
+        assertEquals("DRAFT 29-35",saved.options.caption);
+        assertFalse(saved.options.portraitBokeh);
+        assertTrue("Original source must remain readable",SourceAccess.canRead(target,source));
+
+        try(ActivityScenario<StudioHomeActivity> freshHome=
+                ActivityScenario.launch(StudioHomeActivity.class)){
+            freshHome.onActivity(a->tap(a,"Media Proyek 1",false));
+            idle();
+            assertNotNull("Recent must launch Editor from new Home Activity",resumedEditor());
+            StudioDraftStore.Draft restored=StudioDraftStore.load(target,source);
+            assertNotNull(restored);
+            assertEquals(saved.options.caption,restored.options.caption);
+            assertEquals(saved.options.preset,restored.options.preset);
+            assertEquals(saved.options.frameStyle,restored.options.frameStyle);
+            PhotoEngine.Result exported=PhotoEngine.process(target,source,restored.options);
+            Bitmap image=BitmapFactory.decodeByteArray(exported.jpeg,0,exported.jpeg.length);
+            assertNotNull("JPEG output must decode",image);
+            try{
+                assertEquals(1080,image.getWidth());
+                assertEquals(1920,image.getHeight());
+            }finally{image.recycle();}
+            assertArrayEquals("Original media must stay unchanged",originalDigest,digest(source));
+            back();
+        }
+    }
+
+    @Test public void corruptDraftDeletedSourceAndClearRecentDoNotCrash() throws Exception {
+        try(ActivityScenario<StudioHomeActivity> first=importWithSafResult()){
+            back();
+        }
+        target.getSharedPreferences("studio-drafts",Context.MODE_PRIVATE).edit()
+                .putString(StudioDraftStore.keyFor(source),"{broken-json").commit();
+        assertNull("Corrupt state must not restore",StudioDraftStore.load(target,source));
+        assertTrue("Local fixture must be accessible before deletion",SourceAccess.canRead(target,source));
+        try(ActivityScenario<StudioHomeActivity> freshHome=
+                ActivityScenario.launch(StudioHomeActivity.class)){
+            freshHome.onActivity(a->tap(a,"Media Proyek 1",false));
+            idle();
+            assertNotNull("Corrupt draft must still allow Editor",resumedEditor());
+            back();
+            assertTrue("Delete fixture from MediaStore",target.getContentResolver().delete(source,null,null)>0);
+            assertFalse("Deleted source must be unreadable",SourceAccess.canRead(target,source));
+            freshHome.onActivity(a->tap(a,"Media Proyek 1",false));
+            idle();
+            assertNull("Deleted source must not open Editor",resumedEditor());
+        }
+        // A stale Toast window after a deleted source must not interfere with
+        // the confirmation dialog. Launch a brand-new foreground Home Activity.
+        try(ActivityScenario<StudioHomeActivity> cleanHome=
+                ActivityScenario.launch(StudioHomeActivity.class)){
+            cleanHome.onActivity(a->{
+                tap(a,"BERSIHKAN",false);
+                android.app.AlertDialog dialog=a.clearHistoryDialogForTest();
+                assertNotNull("Click did not create the clear-history dialog",dialog);
+                assertTrue("Clear-history dialog must be visible",dialog.isShowing());
+                android.widget.Button confirm=dialog.getButton(
+                        android.content.DialogInterface.BUTTON_POSITIVE);
+                assertNotNull("Clear-history confirm action missing",confirm);
+                assertEquals("Bersihkan",confirm.getText().toString());
+                assertTrue("Clear-history confirmation did not click",confirm.performClick());
+            });
+            idle();
+        }
+        assertEquals("",target.getSharedPreferences("studio-projects",Context.MODE_PRIVATE)
+                .getString("recent_0",""));
+        assertNull(StudioDraftStore.load(target,source));
+    }
+
+    @Test public void gestureCropUndoRedoAndComparisonSliderStayConsistent() throws Exception {
+        try(ActivityScenario<StudioHomeActivity> home=importWithSafResult()){
+            // The canvas is relaid out asynchronously after changing framing.
+            // Finish the UI event before inspecting measured touch coordinates.
+            act(a->{
+                tap(a,"Frame",false);
+                tap(a,"Crop",false);
+            });
+            idle();
+            int measuredWidth=0,measuredHeight=0;
+            for(int attempt=0;attempt<25;attempt++){
+                int[] dims=new int[2];
+                instrument.runOnMainSync(()->{
+                    View layer=require(resumedEditorUnsafe(),
+                            "Drag to reposition image crop focus",true);
+                    dims[0]=layer.getWidth();dims[1]=layer.getHeight();
+                });
+                measuredWidth=dims[0];measuredHeight=dims[1];
+                if(measuredWidth>40&&measuredHeight>40)break;
+                android.os.SystemClock.sleep(160);
+            }
+            assertTrue("Crop layer remained unmeasured after layout: "+
+                    measuredWidth+"x"+measuredHeight,measuredWidth>40&&measuredHeight>40);
+            act(a->{
+                View touch=require(a,"Drag to reposition image crop focus",true);
+                assertEquals(View.VISIBLE,touch.getVisibility());
+                assertTrue("Crop viewport has no measured width",touch.getWidth()>40);
+                assertTrue("Crop viewport has no measured height",touch.getHeight()>40);
+                long now=android.os.SystemClock.uptimeMillis();
+                float y=touch.getHeight()*.5f;
+                android.view.MotionEvent down=android.view.MotionEvent.obtain(now,now,
+                        android.view.MotionEvent.ACTION_DOWN,touch.getWidth()*.80f,y,0);
+                android.view.MotionEvent move=android.view.MotionEvent.obtain(now,now+50,
+                        android.view.MotionEvent.ACTION_MOVE,touch.getWidth()*.25f,y,0);
+                android.view.MotionEvent up=android.view.MotionEvent.obtain(now,now+90,
+                        android.view.MotionEvent.ACTION_UP,touch.getWidth()*.25f,y,0);
+                try{
+                    assertTrue(touch.dispatchTouchEvent(down));
+                    assertTrue(touch.dispatchTouchEvent(move));
+                    assertTrue(touch.dispatchTouchEvent(up));
+                }finally{down.recycle();move.recycle();up.recycle();}
+            });
+            android.os.SystemClock.sleep(1250);
+            StudioDraftStore.Draft moved=StudioDraftStore.load(target,source);
+            assertNotNull("Crop focus not autosaved",moved);
+            assertTrue("Drag must change persisted focus X",moved.options.focusX>.70f);
+            assertEquals(AspectRatioProfile.CROP,moved.options.frameStyle);
+            act(a->tap(a,"Undo perubahan terakhir",true));
+            android.os.SystemClock.sleep(950);
+            StudioDraftStore.Draft undo=StudioDraftStore.load(target,source);
+            assertNotNull(undo);
+            assertEquals("Undo restored original crop focus",.5f,undo.options.focusX,.09f);
+            act(a->tap(a,"Redo perubahan",true));
+            android.os.SystemClock.sleep(950);
+            StudioDraftStore.Draft redo=StudioDraftStore.load(target,source);
+            assertNotNull(redo);
+            assertEquals("Redo restored gesture focus",moved.options.focusX,redo.options.focusX,.02f);
+            act(a->{
+                tap(a,"↔ Sebelum",false);
+                assertNotNull("Before/after button must toggle to After",
+                        locate(a.getWindow().getDecorView(),"✦ Sesudah",false));
+                tap(a,"✦ Sesudah",false);
+                assertNotNull("Comparison button should return to Before",
+                        locate(a.getWindow().getDecorView(),"↔ Sebelum",false));
+            });
+            PhotoEngine.Result first=PhotoEngine.process(target,source,
+                    redo.options);
+            PhotoEngine.Result second=PhotoEngine.process(target,source,
+                    redo.options.withFrameStyle(AspectRatioProfile.FIT));
+            assertFalse("Crop and Fit exports must have different pixels",
+                    java.util.Arrays.equals(first.jpeg,second.jpeg));
+            back();
+        }
+    }
+
+    @Test public void repeatedImportOfSameUriStartsFreshRatherThanResumingDraft() throws Exception {
+        try(ActivityScenario<StudioHomeActivity> first=importWithSafResult()){
+            act(editor->{
+                tap(editor,"Color Look: Vibrant",true);
+                tap(editor,"Teks",false);
+                EditText caption=(EditText)input(editor.getWindow().getDecorView());
+                assertNotNull(caption);
+                caption.setText("OLD SAVED EDIT");
+            });
+            back();
+        }
+        StudioDraftStore.Draft before=StudioDraftStore.load(target,source);
+        assertNotNull(before);
+        assertEquals(2,before.options.preset);
+        assertEquals("OLD SAVED EDIT",before.options.caption);
+        // A second ACTION_OPEN_DOCUMENT result points to the SAME source URI,
+        // but it is explicitly a fresh import, not a Recent-project action.
+        Intents.release();
+        intentsInitialized=false;
+        try(ActivityScenario<StudioHomeActivity> second=importWithSafResult()){
+            act(editor->{
+                assertFalse("Fresh import must not opt into saved draft",
+                        editor.getIntent().getBooleanExtra("resume_project",true));
+                try{
+                    java.lang.reflect.Field preset=StudioEditorActivity.class.getDeclaredField("preset");
+                    java.lang.reflect.Field caption=StudioEditorActivity.class.getDeclaredField("caption");
+                    preset.setAccessible(true);
+                    caption.setAccessible(true);
+                    assertEquals("New import inherited a previous Color Look",1,preset.getInt(editor));
+                    assertEquals("New import inherited old caption","",caption.get(editor));
+                }catch(ReflectiveOperationException ex){
+                    throw new AssertionError("Cannot inspect actual editor state",ex);
+                }
+            });
+            back();
+        }
+        assertArrayEquals("Reimport changed original bytes",originalDigest,digest(source));
+    }
+}
