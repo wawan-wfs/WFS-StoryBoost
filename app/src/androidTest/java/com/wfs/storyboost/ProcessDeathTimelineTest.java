@@ -6,6 +6,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Process;
 import android.provider.MediaStore;
 import android.view.View;
@@ -29,6 +30,11 @@ public final class ProcessDeathTimelineTest {
     private Context app(){return inst.getTargetContext();}
     private void phase(String p){
         Assume.assumeTrue(p.equals(InstrumentationRegistry.getArguments().getString("wfs.timeline.phase")));
+    }
+    private void reportPid(String key){
+        Bundle status=new Bundle();
+        status.putInt(key,Process.myPid());
+        inst.sendStatus(2,status);
     }
     private Intent screen(){
         return new Intent(app(),StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
@@ -71,7 +77,7 @@ public final class ProcessDeathTimelineTest {
         return Arrays.toString(hash.digest());
     }
 
-    @Test public void stageVisibleDraftAndHistory()throws Exception{
+    @Test(timeout=145000) public void stageVisibleDraftAndHistory()throws Exception{
         phase("stage");
         Uri first=fixture("qa-timeline-a.mp4"),second=fixture("qa-timeline-b.mp4");
         ExportOptions old=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
@@ -99,8 +105,12 @@ public final class ProcessDeathTimelineTest {
                 .putInt("pid",Process.myPid()).putString("a",first.toString()).putString("b",second.toString())
                 .putString("aId",firstId).putString("bId",secondId)
                 .putString("shaA",sha(first)).putString("shaB",sha(second)).commit());
-        System.out.println("TIMELINE_STAGE pid="+Process.myPid()+" moved=true undo=true redo=true");
-        // The owner script force-stops this process before independently verifying.
+        reportPid("wfsTimelineStagePid");
+        // Keep the Activity and instrumentation alive, so the host must interrupt
+        // this process before a normal ActivityScenario finish can save anything.
+        Thread.sleep(120000L);
+        ui.close();
+        fail("External force-stop never interrupted the foreground timeline");
     }
 
     @Test public void verifyDifferentProcessAndReopenedDraft()throws Exception{
@@ -108,7 +118,9 @@ public final class ProcessDeathTimelineTest {
         android.content.SharedPreferences p=app().getSharedPreferences(PREF,Context.MODE_PRIVATE);
         Uri first=Uri.parse(p.getString("a","")),second=Uri.parse(p.getString("b",""));
         try{
-            assertNotEquals("Expected a new PID",p.getInt("pid",-1),Process.myPid());
+            int previousPid=p.getInt("pid",-1);
+            assertTrue("Live stage did not persist its PID",previousPid>0);
+            assertNotEquals("Expected a new PID",previousPid,Process.myPid());
             TimelineProject saved=TimelineDraftStore.load(app());
             assertNotNull(saved);
             assertEquals(p.getString("bId",""),saved.clips.get(0).id);
@@ -127,7 +139,6 @@ public final class ProcessDeathTimelineTest {
                     assertFalse(find(root,"Undo",false).isEnabled());
                 });
             }
-            System.out.println("TIMELINE_RESTORED pid="+Process.myPid()+" unchanged=true");
         }finally{
             TimelineDraftStore.clear(app());
             if("content".equals(first.getScheme()))
@@ -136,5 +147,6 @@ public final class ProcessDeathTimelineTest {
             for(Uri u:new Uri[]{first,second})if("content".equals(u.getScheme()))app().getContentResolver().delete(u,null,null);
             p.edit().clear().commit();
         }
+        reportPid("wfsTimelineRestoredPid");
     }
 }
