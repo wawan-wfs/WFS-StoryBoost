@@ -1089,7 +1089,7 @@ public final class StudioEditorActivity extends Activity {
                             .putExtra(StudioMergeActivity.EXTRA_MIGRATE_URI,mediaUri.toString()));
                 }catch(IllegalArgumentException invalid){toast(invalid.getMessage());}
             });
-            toolPane.addView(timeline,new LinearLayout.LayoutParams(-1,d(42)));
+            toolPane.addView(timeline,new LinearLayout.LayoutParams(-1,dp(42)));
         }
     }
     private void confirmExport(){
