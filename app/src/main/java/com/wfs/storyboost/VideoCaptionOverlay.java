@@ -15,11 +15,17 @@ import androidx.media3.effect.StaticOverlaySettings;
 final class VideoCaptionOverlay extends TextOverlay {
     private final ExportOptions options;
     private final SpannableString text;
+    private final TimelineProject.Caption window;
     private Bitmap strip;
-    private OverlaySettings settings;
+    private OverlaySettings settings,hidden;
 
     VideoCaptionOverlay(ExportOptions options){
+        this(options,null);
+    }
+
+    VideoCaptionOverlay(ExportOptions options,TimelineProject.Caption window){
         this.options=options;
+        this.window=window;
         text=new SpannableString(options.caption);
     }
 
@@ -43,11 +49,14 @@ final class VideoCaptionOverlay extends TextOverlay {
                 .setBackgroundFrameAnchor(0f,1f-2f*(top+stripHeight/2f)/height)
                 .setOverlayFrameAnchor(0f,0f)
                 .build();
+        hidden=new StaticOverlaySettings.Builder().setAlphaScale(0f).build();
     }
 
     @Override public Bitmap getBitmap(long presentationTimeUs){return strip;}
 
-    @Override public OverlaySettings getOverlaySettings(long presentationTimeUs){return settings;}
+    @Override public OverlaySettings getOverlaySettings(long presentationTimeUs){
+        return window==null||window.atUs(presentationTimeUs)?settings:hidden;
+    }
 
     @Override public void release() throws VideoFrameProcessingException {
         try{super.release();}

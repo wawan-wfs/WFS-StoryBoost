@@ -236,6 +236,7 @@ jobs:
             bash scripts/fetch-dncnn-model.sh
             gradle --no-daemon :app:connectedDebugAndroidTest
             bash scripts/qa-process-death-local.sh
+            bash scripts/qa-process-death-timeline.sh
             bash scripts/qa-process-death-pending.sh
             WFS_RECOVER_EMULATOR_LAUNCHER=1 bash scripts/qa-process-death-saf.sh
             # A distinct acceptance pass keeps Photos installed/enabled; it
@@ -274,6 +275,13 @@ jobs:
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             qa-hdr-phone-package.txt
           if-no-files-found: error
+      - name: Upload timeline process-death proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta15-Timeline-Restart-API${{ matrix.api }}
+          path: qa-timeline-restart/
+          if-no-files-found: warn
       - name: Upload crop and caption viewport pixel results
         if: always()
         uses: actions/upload-artifact@v4

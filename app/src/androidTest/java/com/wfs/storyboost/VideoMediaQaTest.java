@@ -426,6 +426,55 @@ public class VideoMediaQaTest {
         assertHdrCaptionExport("smpte2084");
     }
 
+    @Test(timeout=160000)
+    public void timelinePreservesTrimOrderPtsAndCaptionWindowInDecodedMp4() throws Exception {
+        Uri first=importFixture("qa-timeline-a.mp4"),second=importFixture("qa-timeline-b.mp4");
+        byte[] a=hashSource(first),b=hashSource(second);
+        TimelineProject draft=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(first.toString(),MediaProbe.duration(ctx,first),500,1500))
+                .append(TimelineProject.Clip.create(second.toString(),MediaProbe.duration(ctx,second),500,1500))
+                .move(1,0).caption(new TimelineProject.Caption("TIMED CAPTION",500,1500,0xffffd786));
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> output=new AtomicReference<>();
+        AtomicReference<String> error=new AtomicReference<>();
+        mergeEngine=new VideoMergeEngine();
+        inst.runOnMainSync(()->{
+            try{mergeEngine.startTimeline(ctx,draft,new VideoMergeEngine.Listener(){
+                @Override public void onCompleted(File file){output.set(file);done.countDown();}
+                @Override public void onFailure(String message){error.set(message);done.countDown();}
+            });}catch(Exception ex){error.set(ex.toString());done.countDown();}
+        });
+        assertTrue("Timeline encoder timed out",done.await(125,TimeUnit.SECONDS));
+        assertNull("Timeline export failed",error.get());
+        File file=output.get();
+        assertNotNull(file);outputFiles.add(file);
+        assertTrue(containsCodec(file,"video/avc"));assertTrue(containsCodec(file,"audio/mp4a-latm"));
+        MediaProbe.Info info=MediaProbe.inspect(file);
+        assertTrue("Duration should reflect both 1s trims",Math.abs(info.durationMs-2000)<=250);
+        MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(file);
+        assertTrue(pts.videoSamples>=40&&pts.audioSamples>40);
+        assertTrue("Audio sample drift "+pts.lastPtsDriftMs(),pts.lastPtsDriftMs()>=0&&pts.lastPtsDriftMs()<=250);
+        try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+            reader.setDataSource(file.getAbsolutePath());
+            for(int i=0;i<4;i++){
+                long t=250000L+i*500000;
+                android.graphics.Bitmap img=reader.getFrameAtTime(t,MediaMetadataRetriever.OPTION_CLOSEST);
+                assertNotNull("Missing decoded timeline frame at "+t,img);
+                try{
+                    assertEquals(320,img.getWidth());assertEquals(568,img.getHeight());
+                    int grey=(img.getPixel(120,120)>>16)&255;
+                    assertTrue("Wrong trim or order at "+t+" luma="+grey,
+                            i<2?grey>=145&&grey<=205:grey>=50&&grey<=105);
+                    CaptionPixels pixels=scanCaption(img);
+                    assertEquals("Caption window wrong at "+t,i==1||i==2,!pixels.bounds.isEmpty());
+                    android.util.Log.i("WfsBeta15TimelineQA","frameUs="+t+" luma="+grey+
+                            " caption="+pixels.bounds.flattenToString()+" driftMs="+pts.lastPtsDriftMs());
+                }finally{img.recycle();}
+            }
+        }
+        assertArrayEquals(a,hashSource(first));assertArrayEquals(b,hashSource(second));
+    }
+
     private void assertHdrCaptionExport(String transfer) throws Exception {
         Uri uri=importFixture("qa-caption-"+transfer+".mp4");
         MediaProbe.Info input=MediaProbe.inspect(ctx,uri);

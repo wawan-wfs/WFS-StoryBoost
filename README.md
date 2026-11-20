@@ -1,5 +1,9 @@
 # WFS StoryBoost — Creative Editing Studio v3.0.0-beta3
 
+## Beta15 — Timeline Studio
+
+Satu track hingga 10 klip dengan trim, urutan, undo/redo dan satu caption dengan waktu tampil. Draf tersimpan terpisah dari editor satu media. [Cara menggunakan dan batasan beta15](docs/BETA15_QA.md).
+
 ## Beta14 — uji bentuk caption dan diagnosa HDR
 
 Periksa JPEG dan MP4 terhadap referensi visual independen. Studio membedakan salinan HDR asli dari ekspor edit SDR. [Cakupan beta14](docs/BETA14_QA.md).

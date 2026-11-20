@@ -14,3 +14,6 @@ qa-physical-results/
 # Generated synthetic fixtures, verified and assembled in Android CI.
 app/src/androidTest/assets/qa-*.mp4
 qa-provider/src/main/assets/qa-h264-extended.mp4
+
+# Native synthetic timeline QA diagnostics
+qa-timeline-restart/

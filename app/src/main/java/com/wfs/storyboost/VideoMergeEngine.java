@@ -4,6 +4,8 @@ import android.content.Context;
 import android.net.Uri;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.MimeTypes;
+import androidx.media3.common.Effect;
+import androidx.media3.effect.OverlayEffect;
 import androidx.media3.effect.Presentation;
 import androidx.media3.transformer.Composition;
 import androidx.media3.transformer.EditedMediaItem;
@@ -55,6 +57,63 @@ public final class VideoMergeEngine {
                         Presentation.createForWidthAndHeight(width,height,
                                 Presentation.LAYOUT_SCALE_TO_FIT))))
                 .build();
+        encode(context,sources,composition,-1,false,false,width,height,listener);
+    }
+
+    /** Timeline export uses trimmed clips and composition-global caption time. */
+    void startTimeline(Context context,TimelineProject draft,Listener listener){
+        if(draft==null||draft.clips.isEmpty())throw new IllegalArgumentException("Timeline kosong.");
+        ArrayList<Uri> sources=new ArrayList<>();
+        ArrayList<EditedMediaItem> items=new ArrayList<>();
+        boolean hasAudio=false,hasHdr=false;
+        AspectRatioProfile.Size canvas;
+        try{
+            Uri first=Uri.parse(draft.clips.get(0).uri);
+            SourceAccess.requireReadable(context,first);
+            AspectRatioProfile.Size original=MediaDimensions.video(context,first);
+            int limit=draft.quality==OutputProfile.HD?1280:
+                    draft.quality==OutputProfile.FULL_HD?1920:3840;
+            float scale=Math.min(1f,limit/(float)Math.max(original.width,original.height));
+            canvas=new AspectRatioProfile.Size(Math.max(2,Math.round(original.width*scale/2)*2),
+                    Math.max(2,Math.round(original.height*scale/2)*2));
+            for(TimelineProject.Clip clip:draft.clips){
+                Uri uri=Uri.parse(clip.uri);
+                SourceAccess.requireReadable(context,uri);
+                MediaProbe.Info input=MediaProbe.inspect(context,uri);
+                long duration=MediaProbe.duration(context,uri);
+                if(!input.video||duration<=0||clip.out>duration)
+                    throw new IllegalArgumentException("Media atau trim klip "+(sources.size()+1)+" berubah.");
+                hasAudio|=input.audio;
+                hasHdr|=input.isHdr();
+                sources.add(uri);
+                MediaItem media=new MediaItem.Builder().setUri(uri)
+                        .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(clip.in).setEndPositionMs(clip.out).build()).build();
+                List<Effect> frame=Collections.singletonList(Presentation.createForWidthAndHeight(
+                        canvas.width,canvas.height,Presentation.LAYOUT_SCALE_TO_FIT));
+                items.add(new EditedMediaItem.Builder(media)
+                        .setEffects(new Effects(Collections.emptyList(),frame)).build());
+            }
+        }catch(Exception problem){
+            throw new IllegalArgumentException("Periksa akses dan trim sumber timeline. "+
+                    (problem.getMessage()==null?"":problem.getMessage()),problem);
+        }
+        EditedMediaItemSequence sequence=hasAudio?EditedMediaItemSequence.withAudioAndVideoFrom(items)
+                :EditedMediaItemSequence.withVideoFrom(items);
+        Composition.Builder builder=new Composition.Builder(sequence);
+        if(hasHdr)builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL);
+        if(draft.caption!=null){
+            ExportOptions style=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
+                    AspectRatioProfile.FIT,false).withCaption(draft.caption.text,draft.caption.color);
+            builder.setEffects(new Effects(Collections.emptyList(),Collections.singletonList(
+                    new OverlayEffect(Collections.singletonList(new VideoCaptionOverlay(style,draft.caption))))));
+        }
+        encode(context,sources,builder.build(),draft.duration(),hasAudio,hasHdr,canvas.width,canvas.height,listener);
+    }
+
+    private void encode(Context context,List<Uri> sources,Composition composition,long expectedMs,
+                        boolean expectedAudio,boolean sourceHdr,int width,int height,Listener listener){
+        cancelled=false;
         intermediate=new File(context.getCacheDir(),"wfs_join_"+System.nanoTime()+".mp4");
         final File attemptFile=intermediate;
         transformer=new Transformer.Builder(context)
@@ -70,6 +129,18 @@ public final class VideoMergeEngine {
                             MediaProbe.Info info=MediaProbe.inspect(intermediate);
                             if(!info.video||info.durationMs<=0)
                                 throw new java.io.IOException("Output video tidak terbaca");
+                            if(expectedMs>0){
+                                long outputMs=info.durationMs;
+                                if(Math.abs(outputMs-expectedMs)>Math.max(250,expectedMs/200)||
+                                        info.videoDurationMs<=0||info.audio!=expectedAudio||
+                                        (expectedAudio&&(info.audioDurationMs<=0||
+                                        Math.abs(info.videoDurationMs-info.audioDurationMs)>250))||
+                                        (sourceHdr&&info.isHdr()))
+                                    throw new java.io.IOException("Durasi, audio, atau warna output timeline tidak sesuai.");
+                                AspectRatioProfile.Size actual=MediaDimensions.video(intermediate);
+                                if(actual.width!=width||actual.height!=height)
+                                    throw new java.io.IOException("Ukuran output timeline tidak sesuai.");
+                            }
                             listener.onCompleted(intermediate);
                         }catch(Exception ex){
                             clean();

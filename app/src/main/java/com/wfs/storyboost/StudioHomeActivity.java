@@ -113,6 +113,11 @@ public final class StudioHomeActivity extends Activity {
         LinearLayout.LayoutParams aiLp=new LinearLayout.LayoutParams(0,d(112),1f);
         aiLp.leftMargin=d(10);third.addView(ai,aiLp);
         content.addView(third);
+        gap(content,10);
+        content.addView(tile("▤","Timeline Studio","Susun klip, atur trim dan waktu caption",0xFF6855BE,
+                ()->startActivity(new Intent(this,StudioMergeActivity.class)
+                        .putExtra(StudioMergeActivity.EXTRA_TIMELINE,true))),
+                new LinearLayout.LayoutParams(-1,d(104)));
         gap(content,19);
 
         content.addView(text("Format Cepat",21,TEXT,true));gap(content,9);

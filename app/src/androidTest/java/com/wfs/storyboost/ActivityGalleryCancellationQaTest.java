@@ -501,4 +501,37 @@ public final class ActivityGalleryCancellationQaTest {
         assertArrayEquals(one,sha(first));
         assertArrayEquals(two,sha(second));
     }
+    @Test(timeout=145000)
+    public void timelineCancelsGalleryPublicationAndRetainsDraftOnBothApis() throws Exception {
+        Uri first=fixture("qa-timeline-a.mp4"),second=fixture("qa-timeline-b.mp4");
+        byte[] one=sha(first),two=sha(second);
+        android.content.Context context=inst.getTargetContext();
+        TimelineProject draft=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(first.toString(),MediaProbe.duration(context,first),500,1500))
+                .append(TimelineProject.Clip.create(second.toString(),MediaProbe.duration(context,second),500,1500))
+                .caption(new TimelineProject.Caption("CANCEL WINDOW",400,1500,0xffffd786));
+        assertTrue(TimelineDraftStore.save(context,draft));
+        Uri collection=MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        String prefix="WFS_JOIN_";
+        Set<Uri> prior=rows(collection,prefix);
+        Set<String> cache=cacheMp4();
+        android.content.Intent intent=new android.content.Intent(context,StudioMergeActivity.class)
+                .putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
+        try(ActivityScenario<StudioMergeActivity> screen=ActivityScenario.launch(intent)){
+            screen.onActivity(a->assertTrue(findText(a.getWindow().getDecorView(),
+                    "Total 2000 ms • Caption 400–1500 ms")));
+            try(Pause gate=new Pause(MediaSaver.Stage.AFTER_PUBLISH,prefix)){
+                screen.onActivity(a->tap(a,"Ekspor Timeline MP4"));
+                gate.await();
+                assertRowState(gate.row.get(),0);
+                screen.onActivity(a->cancelDialog(a,"dialog"));
+            }
+            eventually("Timeline cancellation left a cache file or Gallery row",
+                    ()->cacheMp4().equals(cache)&&rows(collection,prefix).equals(prior));
+            assertFalse(device.hasObject(By.text("Video berhasil digabung")));
+            assertEquals(draft.clips.get(0).id,TimelineDraftStore.load(context).clips.get(0).id);
+        }finally{TimelineDraftStore.clear(context);}
+        assertArrayEquals(one,sha(first));assertArrayEquals(two,sha(second));
+    }
+
 }

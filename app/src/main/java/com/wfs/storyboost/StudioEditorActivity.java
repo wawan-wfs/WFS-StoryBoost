@@ -1075,6 +1075,22 @@ public final class StudioEditorActivity extends Activity {
             dual.addView(dualSwitch);
         }
         toolPane.addView(dual);
+        if(isVideo&&!isDemo){
+            gap(toolPane,6);
+            Button timeline=btn("Buka di Timeline Studio",false);
+            timeline.setOnClickListener(v->{
+                if(exportBusy)return;
+                try{
+                    if(!StudioDraftStore.save(this,mediaUri,options(),splitMs,dualOutput)){
+                        toast("Draft satu media belum tersimpan.");return;
+                    }
+                    startActivity(new Intent(this,StudioMergeActivity.class)
+                            .putExtra(StudioMergeActivity.EXTRA_TIMELINE,true)
+                            .putExtra(StudioMergeActivity.EXTRA_MIGRATE_URI,mediaUri.toString()));
+                }catch(IllegalArgumentException invalid){toast(invalid.getMessage());}
+            });
+            toolPane.addView(timeline,new LinearLayout.LayoutParams(-1,d(42)));
+        }
     }
     private void confirmExport(){
         if(exportBusy)return;

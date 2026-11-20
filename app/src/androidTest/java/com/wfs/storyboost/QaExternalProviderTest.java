@@ -338,6 +338,47 @@ public final class QaExternalProviderTest {
         }
     }
 
+    @Test public void timelineRefusesRevokedExternalVideoWithoutDiscardingDraft() throws Exception {
+        phase("timeline-revoked");
+        Uri source=providerVideo();
+        VideoMergeEngine engine=new VideoMergeEngine();
+        TimelineDraftStore.clear(app());
+        videoControl("GRANT");
+        try{
+            String initial=sha(app(),source);
+            long duration=MediaProbe.duration(app(),source);
+            TimelineProject project=TimelineProject.empty().append(
+                    TimelineProject.Clip.create(source.toString(),duration,0,1000));
+            assertTrue(TimelineDraftStore.save(app(),project));
+            videoControl("REVOKE");
+            assertFalse(SourceAccess.canRead(app(),source));
+            AtomicReference<String> error=new AtomicReference<>();
+            String[] before=app().getCacheDir().list((dir,n)->n.startsWith("wfs_join_")&&n.endsWith(".mp4"));
+            inst.runOnMainSync(()->{
+                try{
+                    engine.startTimeline(app(),TimelineDraftStore.load(app()),new VideoMergeEngine.Listener(){
+                        @Override public void onCompleted(java.io.File f){fail("Revoked timeline accepted");}
+                        @Override public void onFailure(String message){error.set(message);}
+                    });
+                }catch(IllegalArgumentException expected){error.set(expected.getMessage());}
+            });
+            assertNotNull(error.get());
+            assertTrue(error.get(),error.get().contains("Akses media sumber hilang"));
+            assertEquals(project.clips.get(0).id,TimelineDraftStore.load(app()).clips.get(0).id);
+            String[] after=app().getCacheDir().list((dir,n)->n.startsWith("wfs_join_")&&n.endsWith(".mp4"));
+            assertNotNull(before);assertNotNull(after);
+            Arrays.sort(before);Arrays.sort(after);
+            assertArrayEquals(before,after);
+            videoControl("GRANT");
+            assertEquals(initial,sha(app(),source));
+            System.out.println("PASS timeline external grant revocation, draft retained, no staging file");
+        }finally{
+            inst.runOnMainSync(engine::cancel);
+            TimelineDraftStore.clear(app());
+            videoControl("REVOKE");
+        }
+    }
+
     @Test(timeout=150000) public void verifyVideoGrantRevokedDuringRealEncoder() throws Exception {
         phase("video-encode");
         Uri source=providerVideo();

@@ -86,6 +86,7 @@ adb shell pm enable --user 0 "$PROVIDER"
 control RESTORE
 phase reimportAfterOwnerRevoke reimport
 phase verifyVideoGrantRevokedDuringOriginalCopy video-copy
+phase timelineRefusesRevokedExternalVideoWithoutDiscardingDraft timeline-revoked
 if [[ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" == 35 ]]; then
   phase verifyVideoGrantRevokedDuringRealEncoder video-encode
 fi

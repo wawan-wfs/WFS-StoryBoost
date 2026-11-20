@@ -11,6 +11,15 @@ ffmpeg -hide_banner -loglevel error -nostdin -y -i "$OUT/qa-h264-aac.mp4" \
  -map 0:v:0 -c:v copy -an "$OUT/qa-h264-silent.mp4"
 ffmpeg -hide_banner -loglevel error -nostdin -y -display_rotation 90 \
  -i "$OUT/qa-h264-aac.mp4" -c copy "$OUT/qa-rotated.mp4"
+# Each 2-second clip has a different grayscale middle and excluded dark/white tails.
+for variant in a b; do
+  if [[ $variant == a ]]; then shade=76; tone=440; else shade=170; tone=780; fi
+  ffmpeg -hide_banner -loglevel error -nostdin -y -filter_threads 1 \
+    -f lavfi -i "nullsrc=size=320x568:rate=24,format=yuv420p,geq=lum='if(lt(T,0.5),32,if(lt(T,1.5),$shade,220))':cb=128:cr=128" \
+    -f lavfi -i "sine=frequency=$tone:sample_rate=48000" -t 2 \
+    -c:v libx264 -pix_fmt yuv420p -preset ultrafast -c:a aac -b:a 80k \
+    -movflags +faststart "$OUT/qa-timeline-$variant.mp4"
+done
 # Extended real encoded H.264/AAC is slow enough to exercise non-zero
 # asynchronous Media3 progress before cancellation on the API35 emulator.
 ffmpeg -hide_banner -loglevel error -nostdin -y \
@@ -78,6 +87,12 @@ for transfer in ('arib-std-b67','smpte2084'):
         types={item['side_data_type'] for item in first['side_data_list']}
         assert {'Mastering display metadata','Content light level metadata'}<=types,types
     print(path.name,video['profile'],video['pix_fmt'],transfer,path.stat().st_size)
+for variant in ('a','b'):
+    path=root/f'qa-timeline-{variant}.mp4'
+    data=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(path)]))
+    assert {(s['codec_type'],s['codec_name']) for s in data['streams']}=={('video','h264'),('audio','aac')}
+    assert 1.9<=float(data['format']['duration'])<=2.1
+    print(path.name,'timeline markers and AAC',path.stat().st_size)
 long_path=root/'qa-h264-extended.mp4'
 long_data=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(long_path)]))
 assert {('video','h264'),('audio','aac')} <= {(s['codec_type'],s['codec_name']) for s in long_data['streams']}

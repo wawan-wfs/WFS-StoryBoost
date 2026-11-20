@@ -1,3 +1,11 @@
+## Beta15 one-track Timeline Studio
+
+- Host model checks repeatable URI, stable clip identity, trim bounds, reorder, undo/redo and caption start-inclusive/end-exclusive contract.
+- API29 and API35 decode the reorder fixture after two explicit trims, check grayscale markers, capture caption before/in/after its global interval, inspect actual PTS and prove both source SHA values unchanged.
+- Stage UI reorder/undo/redo, force-stop via adb, verify a fresh PID, stable IDs, trim/caption restoration and unchanged source and legacy draft. Use only synthetic media on a test environment.
+- Revoke a video grant from the separate provider UID, check explicit failure without outputs and retain the draft. Cancel timeline Gallery publication and ensure no pending row/cache leak.
+- Keep previous independent JPEG/MP4 glyph oracle and HDR passthrough. Physical HDR and owner-only measurements remain separate acceptance.
+
 ## Beta13 mixed-script and HDR
 
 - Check grapheme boundaries including decomposed accents, ZWJ/skin tone and flags. Decode actual captioned Arabic/Latin/CJK and unbroken accent fixtures, compare bounds with preview and verify the source SHA.
