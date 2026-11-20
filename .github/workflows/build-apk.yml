@@ -1,8 +1,6 @@
 name: Build WFS StoryBoost APK
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
 
 jobs:
   android-debug-apk:
