@@ -4,6 +4,8 @@ This is a **feature roadmap coverage estimate** for the target v3.0, not a claim
 
 ## Beta16 candidate
 
+Acceptance harness checkpoint: 16 Python parser tests and 5 mock wrapper cases pass locally. Actual Beta16 Android workflow remains unrun; new preview evidence, orphan-cache and independent-provider status gates are pending. No Beta17 production feature code or extra module counted.
+
 2026-11-24: Beta15 exact-head 4/4 verified, including live PID replacement and independent provider gates. Beta16 startup cache/seek lifecycle and QA expanded; Android build and acceptance still pending. Roadmap remains 23/32.
 
 [Continuous rendered Timeline preview](BETA16_QA.md) is implemented on a separate QA branch. Keep the roadmap at **23/32 (71.875%)** until exact-head Android evidence is available. No multitrack module added.

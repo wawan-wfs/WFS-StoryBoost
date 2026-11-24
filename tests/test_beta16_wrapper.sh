@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")/.." && pwd)"
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+cd "$tmp"
+mkdir -p scripts bin
+cp "$root/scripts/qa-beta16-connected.sh" "$root/scripts/qa-beta16-evidence.py" scripts/
+git init -q
+git -c user.name=QA -c user.email=qa@example.invalid commit --allow-empty -qm fixture
+cat > bin/adb <<'MOCK'
+#!/usr/bin/env bash
+if [[ "$*" == 'shell getprop ro.build.version.sdk' ]]; then echo "${MOCK_API:-29}"
+elif [[ "$*" == 'shell getprop ro.product.cpu.abi' ]]; then echo x86_64
+elif [[ "$1" == logcat ]]; then
+  printf '%s\n' 'I/WfsTimelinePreviewQA: renderMs=300 bytes=4096 durationMs=2000' 'I/WfsTimelinePreviewQA: readyMs=430 durationMs=2001' 'I/WfsTimelinePreviewQA: seekSettledMs=600' 'I/WfsTimelinePreviewQA: seekSettledMs=1400'
+  exec sleep 300
+else exit 2
+fi
+MOCK
+cat > bin/gradle <<'MOCK'
+#!/usr/bin/env bash
+set -e
+[[ "${MOCK_GRADLE:-ok}" != fail ]] || exit 17
+out=app/build/outputs/androidTest-results/connected
+mkdir -p "$out"
+cat > "$out/TEST-fixture.xml" <<'XML'
+<testsuite><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion"/></testsuite>
+XML
+if [[ "${MOCK_GRADLE:-ok}" == skip ]]; then sed -i 's@<testcase @<testcase @;s@Recreation"/>@Recreation"><skipped/></testcase>@' "$out/TEST-fixture.xml"; fi
+MOCK
+chmod +x bin/*
+export PATH="$tmp/bin:$PATH"
+unset GITHUB_SHA
+bash scripts/qa-beta16-connected.sh 29 >/dev/null
+grep -q '"status": "passed"' qa-beta16-preview/summary.json
+grep -q 'wrapperExit=0' qa-beta16-preview/provenance.txt
+if MOCK_GRADLE=skip bash scripts/qa-beta16-connected.sh 29 >/dev/null 2>&1; then exit 1; fi
+grep -q '"status": "failed"' qa-beta16-preview/summary.json
+if MOCK_GRADLE=fail bash scripts/qa-beta16-connected.sh 29 >/dev/null 2>&1; then exit 1; fi
+test ! -e qa-beta16-preview/summary.json
+grep -q 'wrapperExit=17' qa-beta16-preview/provenance.txt
+if MOCK_API=35 bash scripts/qa-beta16-connected.sh 29 >/dev/null 2>&1; then exit 1; fi
+if GITHUB_SHA=bad bash scripts/qa-beta16-connected.sh 29 >/dev/null 2>&1; then exit 1; fi
+echo 'PASS 5 mock wrapper cases: success, skip, Gradle error, API mismatch, SHA mismatch'

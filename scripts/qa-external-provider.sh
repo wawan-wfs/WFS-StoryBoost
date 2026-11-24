@@ -69,6 +69,10 @@ phase(){
   if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$output";then
     echo "Non-green native provider phase $scope" >&2; exit 1;
   fi
+  if [[ "$scope" == timeline-revoked ]]; then
+    grep -q "^INSTRUMENTATION_STATUS: wfsTimelinePreviewRevocation=verified[[:space:]]*$" "$output" ||
+      { echo "Missing actual revoked-preview proof" >&2; exit 1; }
+  fi
 }
 control RESTORE
 phase stageNativeImportFromSeparateProvider stage

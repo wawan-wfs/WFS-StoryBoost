@@ -17,3 +17,7 @@ qa-provider/src/main/assets/qa-h264-extended.mp4
 
 # Native synthetic timeline QA diagnostics
 qa-timeline-restart/
+
+# Generated emulator evidence and Python host test cache.
+qa-beta16-preview/
+__pycache__/

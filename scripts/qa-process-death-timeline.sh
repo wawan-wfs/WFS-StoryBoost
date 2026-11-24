@@ -57,7 +57,8 @@ grep -q 'OK (1 test)' "$verify_log" || fail "Timeline restore instrumentation di
 if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$verify_log"; then
   fail "Timeline restore instrumentation reported a failure"
 fi
+grep -q "^INSTRUMENTATION_STATUS: wfsTimelineCacheRecovery=verified[[:space:]]*$" "$verify_log" || fail "Missing actual preview cache recovery proof"
 restored_pid="$(marker_pid wfsTimelineRestoredPid "$verify_log")"
 [[ "$restored_pid" =~ ^[0-9]+$ && "$restored_pid" != "$ready_pid" ]] || fail "No independently verified restored PID"
 printf 'restoredPid=%s\n' "$restored_pid" | tee -a "$out/pids.txt"
-echo "PASS live force-stop, new PID, reordered timeline, local undo/redo, trim, caption and immutable sources"
+echo "PASS live force-stop, new PID, private preview cache recovery, reordered timeline, local undo/redo, trim, caption and immutable sources"

@@ -388,6 +388,9 @@ public final class QaExternalProviderTest {
             assertEquals(project.clips.get(0).id,TimelineDraftStore.load(app()).clips.get(0).id);
             videoControl("GRANT");
             assertEquals(initial,sha(app(),source));
+            android.os.Bundle proof=new android.os.Bundle();
+            proof.putString("wfsTimelinePreviewRevocation","verified");
+            inst.sendStatus(2,proof);
             System.out.println("PASS timeline and preview external grant revocation, draft retained, no staging file");
         }finally{
             inst.runOnMainSync(engine::cancel);

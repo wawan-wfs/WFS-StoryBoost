@@ -161,6 +161,9 @@ public final class ProcessDeathTimelineTest {
                 new java.io.File(app().getCacheDir(),control).delete();
             p.edit().clear().commit();
         }
+        Bundle cacheEvidence=new Bundle();
+        cacheEvidence.putString("wfsTimelineCacheRecovery","verified");
+        inst.sendStatus(2,cacheEvidence);
         reportPid("wfsTimelineRestoredPid");
     }
 }

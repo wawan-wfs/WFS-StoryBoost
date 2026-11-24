@@ -2,9 +2,6 @@ name: Build and verify WFS StoryBoost APK
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, reopened]
-    branches: [main]
 
 permissions:
   contents: read
@@ -33,6 +30,10 @@ jobs:
           sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
       - name: Geometry regression suite
         run: bash scripts/test-ratio-geometry.sh
+      - name: Preview acceptance harness self-tests
+        run: |
+          python3 tests/test_beta16_evidence.py -v
+          bash tests/test_beta16_wrapper.sh
       - name: Fetch verified Qualcomm DnCNN model
         run: bash scripts/fetch-dncnn-model.sh
       - name: Build debug APK
@@ -234,7 +235,7 @@ jobs:
           script: |
             bash scripts/qa-video-fixtures.sh
             bash scripts/fetch-dncnn-model.sh
-            gradle --no-daemon :app:connectedDebugAndroidTest
+            bash scripts/qa-beta16-connected.sh ${{ matrix.api }}
             bash scripts/qa-process-death-local.sh
             bash scripts/qa-process-death-timeline.sh
             bash scripts/qa-process-death-pending.sh
@@ -275,6 +276,13 @@ jobs:
             app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             qa-hdr-phone-package.txt
           if-no-files-found: error
+      - name: Upload Beta16 preview metrics and exact-source evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-beta16-Preview-Evidence-API${{ matrix.api }}
+          path: qa-beta16-preview/
+          if-no-files-found: warn
       - name: Upload timeline process-death proof
         if: always()
         uses: actions/upload-artifact@v4
