@@ -46,6 +46,7 @@ final class TimelineRenderedPreview {
                     if(current!=s)return;
                     s.worker.transferCompletedFile(file);
                     s.file=file;
+                    android.util.Log.i("WfsTimelinePreviewQA","renderMs="+(android.os.SystemClock.elapsedRealtime()-s.startedAt)+" bytes="+file.length()+" durationMs="+snapshot.duration());
                     s.dialog.dismiss();
                     showPlayer(s);
                 }
@@ -113,16 +114,23 @@ final class TimelineRenderedPreview {
                 if(current!=s||done!=s.player)return;
                 if(s.pendingSeek!=s.issuedSeek){s.sendSeek();return;}
                 s.pendingSeek=-1;s.issuedSeek=-1;
+                if(!s.dragging){
+                    int actual=s.video.getCurrentPosition();
+                    s.seek.setProgress(actual);s.display(actual);
+                    android.util.Log.i("WfsTimelinePreviewQA","seekSettledMs="+actual);
+                }
                 if(s.resumeAfterSeek&&!s.dragging&&!s.background)s.video.start();
                 if(!s.dragging)s.resumeAfterSeek=false;
                 s.setPlayText();
             });
             s.display(0);
+            android.util.Log.i("WfsTimelinePreviewQA","readyMs="+(android.os.SystemClock.elapsedRealtime()-s.startedAt)+" durationMs="+duration);
             if(!s.background)s.video.start();
             s.setPlayText();
         });
         s.video.setOnCompletionListener(player->{
             if(current!=s)return;
+            if(s.pendingSeek>=0||s.dragging)return;
             s.ended=true;s.resumeAfterSeek=false;
             s.seek.setProgress(s.seek.getMax());s.display(s.seek.getMax());s.setPlayText();
         });
@@ -136,8 +144,9 @@ final class TimelineRenderedPreview {
     void pause(){
         Session s=current;
         if(s==null)return;
-        if(!s.showingVideo){close(s);return;}
-        s.background=true;s.pausePlayback();
+        // VideoView may release its surface while backgrounded. Close the private
+        // render rather than retain a stale MediaPlayer or restart at zero silently.
+        close(s);
     }
     void close(){if(current!=null)close(current);}
     private void close(Session s){
@@ -161,6 +170,7 @@ final class TimelineRenderedPreview {
 
     private final class Session {
         final TimelineProject snapshot;
+        final long startedAt=android.os.SystemClock.elapsedRealtime();
         final VideoMergeEngine worker=new VideoMergeEngine();
         AlertDialog dialog;
         ProgressBar progress;
@@ -176,7 +186,8 @@ final class TimelineRenderedPreview {
         void seekTo(int ms,boolean resume){
             if(player==null)return;
             if(ended)ended=false;
-            pendingSeek=Math.min(ms,Math.max(0,seek.getMax()-1));
+            pendingSeek=Math.max(0,Math.min(ms,Math.max(0,seek.getMax()-1)));
+            position.setText("Mencari posisi…");
             resumeAfterSeek=resume;
             video.pause();
             if(issuedSeek<0)sendSeek();
@@ -184,7 +195,8 @@ final class TimelineRenderedPreview {
         }
         void sendSeek(){
             issuedSeek=pendingSeek;
-            player.seekTo(issuedSeek,MediaPlayer.SEEK_CLOSEST);
+            try{player.seekTo(issuedSeek,MediaPlayer.SEEK_CLOSEST);}
+            catch(RuntimeException ex){fail(this,"Posisi preview tidak tersedia",ex.getMessage());}
         }
         void pausePlayback(){
             resumeAfterSeek=false;

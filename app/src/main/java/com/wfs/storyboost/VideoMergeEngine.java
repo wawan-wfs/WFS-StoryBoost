@@ -23,7 +23,7 @@ import java.util.List;
 /** Concatenate video clips in order using Media3 Composition. Not a crossfade editor. */
 @SuppressWarnings("UnsafeOptInUsageError")
 public final class VideoMergeEngine {
-    static final String PREVIEW_PREFIX="wfs_timeline_preview_";
+    static final String PREVIEW_PREFIX=TimelinePreviewCache.PREFIX;
     public interface Listener {
         void onCompleted(File output);
         void onFailure(String message);

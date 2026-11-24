@@ -369,9 +369,26 @@ public final class QaExternalProviderTest {
             assertNotNull(before);assertNotNull(after);
             Arrays.sort(before);Arrays.sort(after);
             assertArrayEquals(before,after);
+            String[] previewBefore=app().getCacheDir().list((dir,n)->n.startsWith(VideoMergeEngine.PREVIEW_PREFIX));
+            error.set(null);
+            inst.runOnMainSync(()->{
+                try{
+                    engine.startTimelinePreview(app(),TimelineDraftStore.load(app()),new VideoMergeEngine.Listener(){
+                        @Override public void onCompleted(java.io.File f){fail("Revoked preview accepted");}
+                        @Override public void onFailure(String message){error.set(message);}
+                    });
+                }catch(IllegalArgumentException expected){error.set(expected.getMessage());}
+            });
+            assertNotNull(error.get());
+            assertTrue(error.get(),error.get().contains("Akses media sumber hilang"));
+            String[] previewAfter=app().getCacheDir().list((dir,n)->n.startsWith(VideoMergeEngine.PREVIEW_PREFIX));
+            assertNotNull(previewBefore);assertNotNull(previewAfter);
+            Arrays.sort(previewBefore);Arrays.sort(previewAfter);
+            assertArrayEquals(previewBefore,previewAfter);
+            assertEquals(project.clips.get(0).id,TimelineDraftStore.load(app()).clips.get(0).id);
             videoControl("GRANT");
             assertEquals(initial,sha(app(),source));
-            System.out.println("PASS timeline external grant revocation, draft retained, no staging file");
+            System.out.println("PASS timeline and preview external grant revocation, draft retained, no staging file");
         }finally{
             inst.runOnMainSync(engine::cancel);
             TimelineDraftStore.clear(app());

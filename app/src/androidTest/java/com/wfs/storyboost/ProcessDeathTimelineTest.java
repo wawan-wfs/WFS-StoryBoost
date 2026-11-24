@@ -101,9 +101,15 @@ public final class ProcessDeathTimelineTest {
             tap(root,"Redo",false);
             assertEquals(secondId,TimelineDraftStore.load(app()).clips.get(0).id);
         });
+        // Seed a disposable interrupted-render file and an unrelated control.
+        String orphan=VideoMergeEngine.PREVIEW_PREFIX+java.util.UUID.randomUUID()+".mp4";
+        String control="wfs-qa-control-"+java.util.UUID.randomUUID()+".mp4";
+        java.nio.file.Files.write(new java.io.File(app().getCacheDir(),orphan).toPath(),new byte[]{1});
+        java.nio.file.Files.write(new java.io.File(app().getCacheDir(),control).toPath(),new byte[]{2});
         assertTrue(app().getSharedPreferences(PREF,Context.MODE_PRIVATE).edit()
                 .putInt("pid",Process.myPid()).putString("a",first.toString()).putString("b",second.toString())
                 .putString("aId",firstId).putString("bId",secondId)
+                .putString("orphan",orphan).putString("control",control)
                 .putString("shaA",sha(first)).putString("shaB",sha(second)).commit());
         reportPid("wfsTimelineStagePid");
         // Keep the Activity and instrumentation alive, so the host must interrupt
@@ -121,6 +127,11 @@ public final class ProcessDeathTimelineTest {
             int previousPid=p.getInt("pid",-1);
             assertTrue("Live stage did not persist its PID",previousPid>0);
             assertNotEquals("Expected a new PID",previousPid,Process.myPid());
+            String orphan=p.getString("orphan",""),control=p.getString("control","");
+            assertTrue(orphan.startsWith(VideoMergeEngine.PREVIEW_PREFIX));
+            assertTrue(control.startsWith("wfs-qa-control-"));
+            assertFalse("Cold startup must discard interrupted preview",new java.io.File(app().getCacheDir(),orphan).exists());
+            assertArrayEquals(new byte[]{2},java.nio.file.Files.readAllBytes(new java.io.File(app().getCacheDir(),control).toPath()));
             TimelineProject saved=TimelineDraftStore.load(app());
             assertNotNull(saved);
             assertEquals(p.getString("bId",""),saved.clips.get(0).id);
@@ -145,6 +156,9 @@ public final class ProcessDeathTimelineTest {
                 app().getSharedPreferences("studio-drafts",Context.MODE_PRIVATE).edit()
                         .remove(StudioDraftStore.keyFor(first)).commit();
             for(Uri u:new Uri[]{first,second})if("content".equals(u.getScheme()))app().getContentResolver().delete(u,null,null);
+            String control=p.getString("control","");
+            if(control.startsWith("wfs-qa-control-")&&!control.contains("/"))
+                new java.io.File(app().getCacheDir(),control).delete();
             p.edit().clear().commit();
         }
         reportPid("wfsTimelineRestoredPid");

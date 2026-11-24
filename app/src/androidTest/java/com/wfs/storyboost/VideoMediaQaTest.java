@@ -490,6 +490,7 @@ public class VideoMediaQaTest {
                 .move(1,0).caption(new TimelineProject.Caption("TIMED CAPTION",500,1500,0xffffd786));
         assertTrue(TimelineDraftStore.save(ctx,draft));
         java.util.Set<File> before=previewFiles();
+        java.util.Set<Long> galleryBefore=storyBoostGalleryRows();
         CountDownLatch done=new CountDownLatch(1);
         AtomicReference<File> exported=new AtomicReference<>();
         AtomicReference<String> error=new AtomicReference<>();
@@ -513,6 +514,7 @@ public class VideoMediaQaTest {
                 assertTrue("Rendered Preview Timeline player did not open",
                         device.wait(Until.hasObject(By.desc("Posisi waktu Preview Timeline").enabled(true)),100000));
                 File rendered=onlyNewPreview(before);
+                assertEquals("Preview published a Gallery item",galleryBefore,storyBoostGalleryRows());
                 assertTrue("Two-second preview did not finish playback",
                         device.wait(Until.hasObject(By.text("Putar")),10000));
                 android.graphics.Rect seek=device.findObject(By.desc("Posisi waktu Preview Timeline"))
@@ -523,6 +525,12 @@ public class VideoMediaQaTest {
                 assertTrue(device.click(seek.left+seek.width()*70/100,seek.centerY()));
                 assertTrue("Seek after the cut did not reach clip 2",device.wait(Until.hasObject(
                         By.text(java.util.regex.Pattern.compile(".* ·  Klip 2"))),5000));
+                // End the burst on the first side of the cut and wait for the
+                // actual settled label (the UI displays Mencari posisi until completion).
+                for(int pct:new int[]{25,80,35,75,30})
+                    assertTrue(device.click(seek.left+seek.width()*pct/100,seek.centerY()));
+                assertTrue("Last rapid seek must win",device.wait(Until.hasObject(
+                        By.text(java.util.regex.Pattern.compile(".* ·  Klip 1"))),5000));
                 try (MediaMetadataRetriever previewReader=new MediaMetadataRetriever();
                      MediaMetadataRetriever exportReader=new MediaMetadataRetriever()){
                     previewReader.setDataSource(rendered.getAbsolutePath());
@@ -548,6 +556,8 @@ public class VideoMediaQaTest {
                 }
                 activity.recreate();
                 assertFalse("Previous Activity must release the private MP4",rendered.exists());
+                assertEquals("Preview/recreation changed Gallery",galleryBefore,storyBoostGalleryRows());
+                assertEquals("Unexpected private files after recreation",before,previewFiles());
                 assertEquals(draft.clips.get(0).id,TimelineDraftStore.load(ctx).clips.get(0).id);
                 assertEquals(draft.caption.out,TimelineDraftStore.load(ctx).caption.out);
                 assertArrayEquals(firstHash,hashSource(first));assertArrayEquals(secondHash,hashSource(second));
@@ -587,6 +597,18 @@ public class VideoMediaQaTest {
         assertEquals("Cancelled render must not send a completion or error callback",0,callbacks[0]);
         assertEquals(before,previewFiles());
         assertArrayEquals(sha,hashSource(kept));
+    }
+
+    private java.util.Set<Long> storyBoostGalleryRows(){
+        java.util.Set<Long> ids=new java.util.HashSet<>();
+        Uri collection=MediaStore.setIncludePending(MediaStore.Video.Media.EXTERNAL_CONTENT_URI);
+        try(android.database.Cursor rows=ctx.getContentResolver().query(collection,
+                new String[]{MediaStore.Video.Media._ID},
+                MediaStore.Video.Media.RELATIVE_PATH+"=?",new String[]{"Movies/WFS StoryBoost/"},null)){
+            assertNotNull(rows);
+            while(rows.moveToNext())ids.add(rows.getLong(0));
+        }
+        return ids;
     }
 
     private java.util.Set<File> previewFiles(){
