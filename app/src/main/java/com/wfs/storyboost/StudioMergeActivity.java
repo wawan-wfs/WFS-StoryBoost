@@ -123,6 +123,9 @@ public final class StudioMergeActivity extends Activity {
         preview=new VideoView(this);
         preview.setBackground(StudioUi.solid(this,0xFF080B18,17));
         body.addView(preview,new LinearLayout.LayoutParams(-1,d(190)));
+        if(timelineMode){
+            body.addView(txt("Preview sumber • warna final tersedia di Preview Timeline",11,StudioUi.MUTED,false));
+        }
         gap(body,12);
         LinearLayout actions=row();
         count=txt("Belum ada klip",13,StudioUi.TEXT,true);
@@ -235,10 +238,11 @@ public final class StudioMergeActivity extends Activity {
             toast("Izin baca klip hilang. Impor ulang atau hapus klip untuk melanjutkan.");
             renderList();return;
         }
+        final boolean mute=timelineMode&&timeline.current().clips.get(index).adjustments.mute;
         preview.setOnPreparedListener(player->{
+            if(selected!=index||destroyed)return;
             if(timelineMode){
                 trimPlayer=player;
-                boolean mute=timeline.current().clips.get(index).adjustments.mute;
                 player.setVolume(mute?0f:1f,mute?0f:1f);
                 player.seekTo(position,android.media.MediaPlayer.SEEK_CLOSEST);
             }else preview.seekTo((int)position);

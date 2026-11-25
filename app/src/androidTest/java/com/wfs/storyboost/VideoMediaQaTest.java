@@ -607,12 +607,19 @@ public class VideoMediaQaTest {
                 .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
                 .append(TimelineProject.Clip.create(source.toString(),2000,500,1500));
         TimelineProject edited=base.adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,-100,0,0,true));
-        File export=renderAdjusted(edited,false),preview=renderAdjusted(edited,true);
+        File export=renderAdjusted(edited,false);
+        File preview=null;
         try{
+            preview=renderAdjusted(edited,true);
             for(File file:new File[]{export,preview}){
                 MediaProbe.Info info=MediaProbe.inspect(file);assertTrue(info.video&&info.audio);
                 assertTrue(Math.abs(info.durationMs-2000)<=250);
-                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+                long drift=MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs();
+                assertTrue(drift>=0&&drift<=250);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file);
+                assertTrue("Audible clip unexpectedly silent",pcm.audibleRms()>0.015);
+                assertTrue("Muted clip leaked audio",pcm.mutedRms()<pcm.audibleRms()*0.1);
+                android.util.Log.i("WfsTimelinePreviewQA","mutedRms="+pcm.mutedRms()+" audibleRms="+pcm.audibleRms());
             }
             try(MediaMetadataRetriever a=new MediaMetadataRetriever();MediaMetadataRetriever b=new MediaMetadataRetriever()){
                 a.setDataSource(export.getAbsolutePath());b.setDataSource(preview.getAbsolutePath());
@@ -633,7 +640,7 @@ public class VideoMediaQaTest {
             try{assertFalse("All muted clips must not publish AAC",MediaProbe.inspect(silentOutput).audio);}
             finally{silentOutput.delete();}
             assertArrayEquals(hash,hashSource(source));
-        }finally{export.delete();preview.delete();}
+        }finally{export.delete();if(preview!=null)preview.delete();}
     }
     private File renderAdjusted(TimelineProject draft,boolean privatePreview)throws Exception{
         CountDownLatch done=new CountDownLatch(1);

@@ -2,7 +2,7 @@
 
 ## Beta17 candidate — 2026-11-25
 - Non-destructive per-clip color and mute, schema v2, shared video effects, native timeline sequence strip and staged adjustments.
-- Save-before-history mutation; new host and Android test scenarios.
+- Save-before-history mutation; new host and Android test scenarios including decoded PCM mute oracle.
 - Beta16 exact baseline passed four CI jobs; Beta17 Android verification pending.
 - No new AI weights, independent audio tracks, release signing, version bump or production claim.
 
