@@ -61,6 +61,23 @@ final class TimelineProjectTest {
         for(int i=0;i<42;i++)history.apply(history.current().quality((history.current().quality+1)%3));
         int n=0;while(history.canUndo()){history.undo();n++;}
         check(n==35);
+        ClipAdjustments fx=new ClipAdjustments(6,100,-100,50,true);
+        TimelineProject adjusted=project.adjust(0,fx);
+        check(adjusted.clips.get(0).adjustments==fx);check(adjusted.clips.get(1).adjustments.same(ClipAdjustments.NEUTRAL));
+        check(adjusted.clips.get(0).id.equals(a.id));check(adjusted.clips.get(0).uri.equals(source));
+        check(adjusted.trim(0,600,900).clips.get(0).adjustments==fx);
+        check(adjusted.move(0,1).clips.get(1).adjustments==fx);
+        check(adjusted.startOf(1)==1000);check(adjusted.move(0,1).startOf(1)==700);
+        check(adjusted.adjust(0,new ClipAdjustments(6,100,-100,50,true))==adjusted);
+        check(adjusted.adjust(0,ClipAdjustments.NEUTRAL).clips.get(0).adjustments.same(ClipAdjustments.NEUTRAL));
+        check(!fx.keepsAudio(true));check(ClipAdjustments.NEUTRAL.keepsAudio(true));check(!ClipAdjustments.NEUTRAL.keepsAudio(false));
+        rejects(()->new ClipAdjustments(99,0,0,0,false));rejects(()->new ClipAdjustments(4,101,0,0,false));
+        rejects(()->new ClipAdjustments(4,0,-101,0,false));rejects(()->new ClipAdjustments(4,0,0,101,false));
+        rejects(()->adjusted.adjust(0,null));rejects(()->adjusted.startOf(2));
+        TimelineProject.History edits=new TimelineProject.History(project);edits.apply(adjusted);
+        check(edits.undoTarget()==project&&edits.current()==adjusted);edits.undo();
+        check(edits.redoTarget()==adjusted&&edits.current()==project);edits.redo();
+        check(edits.current()==adjusted);
         System.out.println("PASS "+checks+" timeline assertions");
     }
 }

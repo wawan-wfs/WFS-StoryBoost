@@ -15,18 +15,24 @@ final class TimelineProject {
     static final class Clip {
         final String id,uri;
         final long duration,in,out;
+        final ClipAdjustments adjustments;
 
         Clip(String id,String uri,long duration,long in,long out){
+            this(id,uri,duration,in,out,ClipAdjustments.NEUTRAL);
+        }
+        Clip(String id,String uri,long duration,long in,long out,ClipAdjustments adjustments){
+            if(adjustments==null)throw new IllegalArgumentException("Pengaturan klip tidak tersedia.");
             if(id==null||id.isEmpty()||id.length()>64||
                     uri==null||uri.length()>4096||!uri.startsWith("content://")||
                     duration<=0||duration>MAX_SOURCE_MS||in<0||out<=in||out>duration)
                 throw new IllegalArgumentException("Rentang atau sumber klip tidak valid.");
-            this.id=id;this.uri=uri;this.duration=duration;this.in=in;this.out=out;
+            this.id=id;this.uri=uri;this.duration=duration;this.in=in;this.out=out;this.adjustments=adjustments;
         }
         static Clip create(String uri,long duration,long in,long out){
             return new Clip(UUID.randomUUID().toString(),uri,duration,in,out);
         }
-        Clip trim(long start,long end){return new Clip(id,uri,duration,start,end);}
+        Clip trim(long start,long end){return new Clip(id,uri,duration,start,end,adjustments);}
+        Clip adjust(ClipAdjustments next){return adjustments.same(next)?this:new Clip(id,uri,duration,in,out,next);}
         long length(){return out-in;}
     }
 
@@ -84,6 +90,15 @@ final class TimelineProject {
         if(clips.get(index).in==in&&clips.get(index).out==out)return this;
         List<Clip> next=new ArrayList<>(clips);next.set(index,next.get(index).trim(in,out));return withClips(next);
     }
+    long startOf(int index){
+        if(index<0||index>=clips.size())throw new IllegalArgumentException("Klip tidak tersedia.");
+        long start=0;for(int i=0;i<index;i++)start+=clips.get(i).length();return start;
+    }
+    TimelineProject adjust(int index,ClipAdjustments next){
+        Clip clip=clips.get(index),edited=clip.adjust(next);
+        if(clip==edited)return this;
+        List<Clip> items=new ArrayList<>(clips);items.set(index,edited);return withClips(items);
+    }
     TimelineProject caption(Caption c){return new TimelineProject(clips,c,quality);}
     TimelineProject quality(int mode){return mode==quality?this:new TimelineProject(clips,caption,mode);}
 
@@ -95,6 +110,8 @@ final class TimelineProject {
         TimelineProject current(){return state;}
         boolean canUndo(){return !undo.isEmpty();}
         boolean canRedo(){return !redo.isEmpty();}
+        TimelineProject undoTarget(){return canUndo()?undo.peekLast():state;}
+        TimelineProject redoTarget(){return canRedo()?redo.peekLast():state;}
         void apply(TimelineProject next){
             if(state==next)return;
             if(undo.size()==35)undo.removeFirst();

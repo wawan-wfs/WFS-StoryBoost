@@ -53,7 +53,8 @@ public final class StudioMergeActivity extends Activity {
     private boolean working,destroyed;
     private boolean timelineMode,importing,unreadableDraft;
     private TimelineProject.History timeline;
-    private Button undoTimeline,redoTimeline;
+    private Button undoTimeline,redoTimeline,adjustTimeline;
+    private TimelineStrip timelineStrip;
     private final Button[] qualityButtons=new Button[3];
     private java.util.concurrent.atomic.AtomicBoolean mergeStop=
             new java.util.concurrent.atomic.AtomicBoolean(false);
@@ -108,7 +109,7 @@ public final class StudioMergeActivity extends Activity {
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1f));
         LinearLayout hero=StudioUi.card(this,16);
         hero.setBackground(StudioUi.gradient(this,0xFF343568,0xFF19283E,18));
-        hero.addView(txt("Buat satu cerita dari banyak klip.",19,StudioUi.TEXT,true));
+        hero.addView(txt(timelineMode?"Studio / Video project":"Buat satu cerita dari banyak klip.",19,StudioUi.TEXT,true));
         gap(hero,8);
         hero.addView(txt(timelineMode?"Sampai 10 klip. Sumber yang sama boleh ditambahkan lagi. "+
                 "Putar klip terpilih atau buka preview lengkap dengan caption.":
@@ -140,6 +141,7 @@ public final class StudioMergeActivity extends Activity {
                 renderedPreview.open(timeline.current());
             });
             gap(body,10);
+            timelineStrip=new TimelineStrip(this,this::select);body.addView(timelineStrip);gap(body,10);
             LinearLayout historyBar=row();
             undoTimeline=timelineButton(historyBar,"Undo",()->historyStep(false));
             redoTimeline=timelineButton(historyBar,"Redo",()->historyStep(true));
@@ -148,7 +150,10 @@ public final class StudioMergeActivity extends Activity {
             LinearLayout editBar=row();
             timelineButton(editBar,"Trim klip",this::editTrim);
             timelineButton(editBar,"Caption waktu",this::editTimedCaption);
-            body.addView(editBar);gap(body,11);
+            body.addView(editBar);gap(body,7);
+            adjustTimeline=button("Color Look • Adjust • Audio",true);
+            adjustTimeline.setOnClickListener(v->editClipAdjustments());
+            body.addView(adjustTimeline,new LinearLayout.LayoutParams(-1,d(48)));gap(body,11);
         }
         clipList=col();body.addView(clipList);
         info=txt("Klip akan digabung sesuai urutan. Belum ada transisi silang.",11,StudioUi.MUTED,false);
@@ -233,6 +238,8 @@ public final class StudioMergeActivity extends Activity {
         preview.setOnPreparedListener(player->{
             if(timelineMode){
                 trimPlayer=player;
+                boolean mute=timeline.current().clips.get(index).adjustments.mute;
+                player.setVolume(mute?0f:1f,mute?0f:1f);
                 player.seekTo(position,android.media.MediaPlayer.SEEK_CLOSEST);
             }else preview.seekTo((int)position);
         });
@@ -266,6 +273,8 @@ public final class StudioMergeActivity extends Activity {
             undoTimeline.setEnabled(timeline.canUndo()&&!unreadableDraft);
             redoTimeline.setEnabled(timeline.canRedo()&&!unreadableDraft);
             TimelineProject p=timeline.current();
+            timelineStrip.bind(p,selected);
+            adjustTimeline.setEnabled(!unreadableDraft&&selected>=0&&selected<p.clips.size());
             info.setText(unreadableDraft?"Draft tidak terbaca. Pilih Reset untuk memulai ulang.":
                     "Total "+p.duration()+" ms • "+(p.caption==null?"Tanpa caption":
                     "Caption "+p.caption.in+"–"+p.caption.out+" ms"));
@@ -290,6 +299,8 @@ public final class StudioMergeActivity extends Activity {
             if(timelineMode){
                 TimelineProject.Clip segment=timeline.current().clips.get(index);
                 title.addView(txt(segment.in+"–"+segment.out+" ms  •  "+segment.length()+" ms",10,StudioUi.MUTED,false));
+                TextView fx=txt(segment.adjustments.summary(),10,StudioUi.CYAN,false);
+                fx.setMaxLines(2);title.addView(fx);
             }else{
                 long duration=MediaProbe.duration(this,clip);
                 title.addView(txt(duration>0?String.format(java.util.Locale.US,"%d detik",duration/1000):"Preview",10,StudioUi.MUTED,false));
@@ -473,12 +484,21 @@ public final class StudioMergeActivity extends Activity {
         List<TimelineProject.Clip> items=timeline.current().clips;
         return selected>=0&&selected<items.size()?items.get(selected).id:null;
     }
-    private void editTimeline(TimelineProject next){
-        if(next==timeline.current())return;
-        if(!TimelineDraftStore.save(this,next)){toast("Perubahan gagal disimpan.");return;}
+    private boolean editTimeline(TimelineProject next){
+        if(next==timeline.current())return true;
+        if(!TimelineDraftStore.save(this,next)){toast("Perubahan gagal disimpan.");return false;}
         String id=selectedId();
         timeline.apply(next);
-        bindTimeline(id);
+        bindTimeline(id);return true;
+    }
+    private void editClipAdjustments(){
+        if(!canEditTimeline()||selected<0||selected>=timeline.current().clips.size())return;
+        final String id=selectedId();final int index=selected;
+        preview.pause();
+        ClipAdjustmentPanel.show(this,index,timeline.current().clips.get(index).adjustments,next->{
+            if(!canEditTimeline()||!id.equals(selectedId()))return false;
+            return editTimeline(timeline.current().adjust(index,next));
+        });
     }
     private void bindTimeline(String id){
         syncTimelineClips();
@@ -494,11 +514,9 @@ public final class StudioMergeActivity extends Activity {
     private void historyStep(boolean redo){
         if(!canEditTimeline()||(redo?!timeline.canRedo():!timeline.canUndo()))return;
         String id=selectedId();
+        TimelineProject target=redo?timeline.redoTarget():timeline.undoTarget();
+        if(!TimelineDraftStore.save(this,target)){toast("Perubahan gagal disimpan.");return;}
         if(redo)timeline.redo();else timeline.undo();
-        if(!TimelineDraftStore.save(this,timeline.current())){
-            if(redo)timeline.undo();else timeline.redo();
-            toast("Perubahan gagal disimpan.");return;
-        }
         bindTimeline(id);
     }
     private void resetTimeline(){
@@ -565,6 +583,8 @@ public final class StudioMergeActivity extends Activity {
             if(destroyed)return;
             if(selected>=0&&selected<clips.size()&&preview.isPlaying()){
                 TimelineProject.Clip segment=timeline.current().clips.get(selected);
+                if(timelineStrip!=null)timelineStrip.position(timeline.current().startOf(selected)+
+                        Math.max(0,Math.min(segment.length(),preview.getCurrentPosition()-segment.in)),timeline.current().duration());
                 if(preview.getCurrentPosition()>=segment.out){
                     preview.pause();
                     if(trimPlayer!=null)trimPlayer.seekTo(segment.in,android.media.MediaPlayer.SEEK_CLOSEST);

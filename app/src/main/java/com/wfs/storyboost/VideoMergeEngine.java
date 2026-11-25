@@ -90,15 +90,17 @@ public final class VideoMergeEngine {
                 long duration=MediaProbe.duration(context,uri);
                 if(!input.video||duration<=0||clip.out>duration)
                     throw new IllegalArgumentException("Media atau trim klip "+(sources.size()+1)+" berubah.");
-                hasAudio|=input.audio;
+                hasAudio|=clip.adjustments.keepsAudio(input.audio);
                 hasHdr|=input.isHdr();
                 sources.add(uri);
                 MediaItem media=new MediaItem.Builder().setUri(uri)
                         .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
                                 .setStartPositionMs(clip.in).setEndPositionMs(clip.out).build()).build();
-                List<Effect> frame=Collections.singletonList(Presentation.createForWidthAndHeight(
-                        canvas.width,canvas.height,Presentation.LAYOUT_SCALE_TO_FIT));
+                List<Effect> frame=new ArrayList<>();
+                VideoColorEffects.append(frame,clip.adjustments);
+                frame.add(Presentation.createForWidthAndHeight(canvas.width,canvas.height,Presentation.LAYOUT_SCALE_TO_FIT));
                 items.add(new EditedMediaItem.Builder(media)
+                        .setRemoveAudio(clip.adjustments.mute)
                         .setEffects(new Effects(Collections.emptyList(),frame)).build());
             }
         }catch(Exception problem){

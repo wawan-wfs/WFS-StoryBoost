@@ -599,6 +599,59 @@ public class VideoMediaQaTest {
         assertArrayEquals(sha,hashSource(kept));
     }
 
+    @Test(timeout=450000)
+    public void timelineAdjustedRepeatedClipRendersColorAndMute()throws Exception{
+        Uri source=importFixture("qa-timeline-b.mp4");
+        byte[] hash=hashSource(source);
+        TimelineProject base=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500));
+        TimelineProject edited=base.adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,-100,0,0,true));
+        File export=renderAdjusted(edited,false),preview=renderAdjusted(edited,true);
+        try{
+            for(File file:new File[]{export,preview}){
+                MediaProbe.Info info=MediaProbe.inspect(file);assertTrue(info.video&&info.audio);
+                assertTrue(Math.abs(info.durationMs-2000)<=250);
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+            }
+            try(MediaMetadataRetriever a=new MediaMetadataRetriever();MediaMetadataRetriever b=new MediaMetadataRetriever()){
+                a.setDataSource(export.getAbsolutePath());b.setDataSource(preview.getAbsolutePath());
+                int[] levels=new int[2];
+                int k=0;
+                for(long us:new long[]{350000,1350000}){
+                    android.graphics.Bitmap x=a.getFrameAtTime(us,MediaMetadataRetriever.OPTION_CLOSEST);
+                    android.graphics.Bitmap y=b.getFrameAtTime(us,MediaMetadataRetriever.OPTION_CLOSEST);
+                    assertNotNull(x);assertNotNull(y);
+                    try{
+                        levels[k++]=(x.getPixel(120,120)>>16)&255;
+                        assertTrue(Math.abs(((x.getPixel(120,120)>>16)&255)-((y.getPixel(120,120)>>16)&255))<=3);
+                    }finally{x.recycle();y.recycle();}
+                }
+                assertTrue("Adjusted first clip must be darker than repeated neutral source",levels[0]+15<levels[1]);
+            }
+            File silentOutput=renderAdjusted(edited.adjust(1,new ClipAdjustments(ColorLooks.ORIGINAL,0,0,0,true)),false);
+            try{assertFalse("All muted clips must not publish AAC",MediaProbe.inspect(silentOutput).audio);}
+            finally{silentOutput.delete();}
+            assertArrayEquals(hash,hashSource(source));
+        }finally{export.delete();preview.delete();}
+    }
+    private File renderAdjusted(TimelineProject draft,boolean privatePreview)throws Exception{
+        CountDownLatch done=new CountDownLatch(1);
+        AtomicReference<File> result=new AtomicReference<>();
+        AtomicReference<String> error=new AtomicReference<>();
+        VideoMergeEngine worker=new VideoMergeEngine();
+        inst.runOnMainSync(()->{
+            VideoMergeEngine.Listener listener=new VideoMergeEngine.Listener(){
+                public void onCompleted(File f){worker.transferCompletedFile(f);result.set(f);done.countDown();}
+                public void onFailure(String reason){error.set(reason);done.countDown();}
+            };
+            try{if(privatePreview)worker.startTimelinePreview(ctx,draft,listener);else worker.startTimeline(ctx,draft,listener);}
+            catch(RuntimeException ex){error.set(ex.toString());done.countDown();}
+        });
+        try{assertTrue("Adjusted render timed out",done.await(125,TimeUnit.SECONDS));assertNull(error.get());assertNotNull(result.get());return result.get();}
+        finally{inst.runOnMainSync(worker::cancel);}
+    }
+
     private java.util.Set<Long> storyBoostGalleryRows(){
         java.util.Set<Long> ids=new java.util.HashSet<>();
         Uri collection=MediaStore.setIncludePending(MediaStore.Video.Media.EXTERNAL_CONTENT_URI);

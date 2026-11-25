@@ -2,7 +2,11 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
-## Beta16 candidate
+## Beta17 candidate
+
+Beta16 exact head d0b7d43 passed 4/4 in run 45552840094. Beta17 per-clip edits, v2 draft, shared color pipeline and native sequence strip implemented; exact-head Android verification pending. Keep 23/32 (71.875%). See BETA17_QA.md.
+
+## Beta16 accepted on emulator
 
 Acceptance harness checkpoint: 16 Python parser tests and 5 mock wrapper cases pass locally. Actual Beta16 Android workflow remains unrun; new preview evidence, orphan-cache and independent-provider status gates are pending. No Beta17 production feature code or extra module counted.
 

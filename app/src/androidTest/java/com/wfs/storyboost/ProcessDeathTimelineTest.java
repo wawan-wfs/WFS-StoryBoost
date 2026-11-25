@@ -88,7 +88,7 @@ public final class ProcessDeathTimelineTest {
         assertEquals(1375,initial.caption.out);
         TimelineProject edited=initial.append(TimelineProject.Clip.create(second.toString(),
                 MediaProbe.duration(app(),second),500,1600)).caption(new TimelineProject.Caption(
-                "Caption rentang",400,1750,0xffffd786));
+                "Caption rentang",400,1750,0xffffd786)).adjust(1,new ClipAdjustments(6,30,-20,15,true));
         String firstId=edited.clips.get(0).id,secondId=edited.clips.get(1).id;
         assertTrue(TimelineDraftStore.save(app(),edited));
         ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen());
@@ -136,6 +136,8 @@ public final class ProcessDeathTimelineTest {
             assertNotNull(saved);
             assertEquals(p.getString("bId",""),saved.clips.get(0).id);
             assertEquals(p.getString("aId",""),saved.clips.get(1).id);
+            assertTrue(saved.clips.get(0).adjustments.same(new ClipAdjustments(6,30,-20,15,true)));
+            assertTrue(saved.clips.get(1).adjustments.same(ClipAdjustments.NEUTRAL));
             assertEquals(500,saved.clips.get(0).in);assertEquals(1600,saved.clips.get(0).out);
             assertEquals(125,saved.clips.get(1).in);assertEquals(1500,saved.clips.get(1).out);
             assertEquals(400,saved.caption.in);assertEquals(1750,saved.caption.out);

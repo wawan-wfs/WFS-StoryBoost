@@ -25,7 +25,7 @@ class EvidenceTest(unittest.TestCase):
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
         cases = [f'<testcase classname="{qa.CLASS}" name="{n}">{tag}</testcase>'
-                 for n, tag in zip(qa.REQUIRED, (first, second))]
+                 for n, tag in zip(qa.REQUIRED, (first, second, ""))]
         if omit:
             cases.pop()
         if duplicate:

@@ -11,6 +11,7 @@ CLASS = "com.wfs.storyboost.VideoMediaQaTest"
 REQUIRED = (
     "timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation",
     "timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion",
+    "timelineAdjustedRepeatedClipRendersColorAndMute",
 )
 
 
