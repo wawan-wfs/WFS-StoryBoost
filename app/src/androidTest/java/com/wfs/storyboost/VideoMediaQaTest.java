@@ -650,52 +650,66 @@ public class VideoMediaQaTest {
                 TimelineProject.Clip.create(source.toString(),MediaProbe.duration(ctx,source),500,1500));
         assertTrue(TimelineDraftStore.save(ctx,draft));
         Intent open=new Intent(ctx,StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
-        UiDevice device=UiDevice.getInstance(inst);
         try(ActivityScenario<StudioMergeActivity> a=ActivityScenario.launch(open)){
             openAdjustments(a);
-            androidx.test.uiautomator.UiObject2 mute=device.wait(Until.findObject(By.text("Bisukan audio klip")),5000);
-            assertNotNull(mute);mute.click();
-            tapDialog(device,"Batal");
+            tapAdjustmentMute(false);
+            // Staged edits may not change the persisted project before Apply.
+            assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.same(ClipAdjustments.NEUTRAL));
+            tapDialog(android.R.id.button2,"Batalkan penyesuaian klip");
             assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.same(ClipAdjustments.NEUTRAL));
             openAdjustments(a);
-            mute=device.wait(Until.findObject(By.text("Bisukan audio klip")),5000);
-            assertNotNull(mute);mute.click();
-            tapDialog(device,"Terapkan");
+            tapAdjustmentMute(false);
+            tapDialog(android.R.id.button1,"Terapkan penyesuaian klip");
             assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
-            a.onActivity(activity->{
-                android.widget.Button undo=findButton(activity.getWindow().getDecorView(),"Undo");
-                assertNotNull(undo);assertTrue(undo.isEnabled());assertTrue(undo.performClick());
-            });
+            tapTimelineControl("Undo");
             assertFalse(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
-            a.onActivity(activity->{
-                android.widget.Button redo=findButton(activity.getWindow().getDecorView(),"Redo");
-                assertNotNull(redo);assertTrue(redo.isEnabled());assertTrue(redo.performClick());
-            });
+            tapTimelineControl("Redo");
             assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
             a.recreate();
             assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
             openAdjustments(a);
-            androidx.test.uiautomator.UiObject2 reset=device.wait(Until.findObject(By.text("Reset penyesuaian")),5000);
-            if(reset==null){
-                // Reset is inside the scrollable panel, not the dialog button row.
-                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Reset penyesuaian"))
-                        .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click());
-            }else reset.click();
-            tapDialog(device,"Terapkan");
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Reset penyesuaian klip"))
+                    .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click());
+            assertTrue("Reset is staged too",TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
+            tapDialog(android.R.id.button1,"Terapkan penyesuaian klip");
             assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.same(ClipAdjustments.NEUTRAL));
             assertArrayEquals(original,hashSource(source));
+            android.util.Log.i("WfsTimelinePreviewQA","adjustmentPanel=cancel_apply_undo_redo_recreate_reset_verified");
         }finally{TimelineDraftStore.clear(ctx);}
     }
     private void openAdjustments(ActivityScenario<StudioMergeActivity> a){
-        a.onActivity(activity->{
-            android.widget.Button button=findButton(activity.getWindow().getDecorView(),"Color Look • Adjust • Audio");
-            assertNotNull(button);assertTrue(button.isEnabled());assertTrue(button.performClick());
-        });
+        // Use a real click after revealing the control inside the editor ScrollView.
+        tapTimelineControl("Color Look • Adjust • Audio");
     }
-    private static void tapDialog(UiDevice device,String label){
-        androidx.test.uiautomator.UiObject2 button=device.wait(Until.findObject(By.text(label)),5000);
-        assertNotNull("Missing dialog button "+label,button);button.click();
-        device.waitForIdle();
+    private static void tapTimelineControl(String label){
+        androidx.test.espresso.Espresso.onView(org.hamcrest.Matchers.allOf(
+                androidx.test.espresso.matcher.ViewMatchers.withText(label),
+                androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom(android.widget.Button.class)))
+                .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click());
+    }
+    private static void tapAdjustmentMute(boolean expectedBefore){
+        androidx.test.espresso.ViewInteraction mute=androidx.test.espresso.Espresso.onView(
+                androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Bisukan audio klip"))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog());
+        mute.perform(androidx.test.espresso.action.ViewActions.scrollTo());
+        mute.check(androidx.test.espresso.assertion.ViewAssertions.matches(expectedBefore?
+                androidx.test.espresso.matcher.ViewMatchers.isChecked():
+                androidx.test.espresso.matcher.ViewMatchers.isNotChecked()));
+        mute.perform(androidx.test.espresso.action.ViewActions.click());
+        mute.check(androidx.test.espresso.assertion.ViewAssertions.matches(expectedBefore?
+                androidx.test.espresso.matcher.ViewMatchers.isNotChecked():
+                androidx.test.espresso.matcher.ViewMatchers.isChecked()));
+    }
+    private static void tapDialog(int id,String description){
+        // Real dialog button click, independent of displayed capitalization or locale.
+        androidx.test.espresso.Espresso.onView(org.hamcrest.Matchers.allOf(
+                androidx.test.espresso.matcher.ViewMatchers.withId(id),
+                androidx.test.espresso.matcher.ViewMatchers.withContentDescription(description)))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                .check(androidx.test.espresso.assertion.ViewAssertions.matches(
+                        androidx.test.espresso.matcher.ViewMatchers.isDisplayed()))
+                .perform(androidx.test.espresso.action.ViewActions.click());
     }
 
     private File renderAdjusted(TimelineProject draft,boolean privatePreview)throws Exception{

@@ -1,4 +1,4 @@
-# Beta17 — per-clip editing candidate (unverified Android)
+# Beta17 — per-clip editing candidate (runtime gate failed; fix pending retest)
 
 Baseline Beta16 d0b7d435923d3e95673dc762b13dc83ea2a83858 accepted in run 45552840094. New independent branch, no main changes or automatic workflows.
 
@@ -19,3 +19,11 @@ API29 43.489s vs API35 3.937s for 2s baseline rendering, single emulator samples
 
 ## Open gates
 Run manually on API29/35. Check actual new tests and all existing preview, provider, process-death, HDR capability, photo/AI, viewport and cancel regressions. Inspect the new decoded PCM muted-window vs audible-window test and staged cancel/apply/reset/undo/redo/recreate UI automation; add dedicated small and large viewport coverage, real portrait quality and hardware evidence. Keep roadmap 23/32 until independent module acceptance. No main promotion.
+
+## Actual run 45651350422 — 2026-11-25
+
+Exact source bb8bda67046e80310752fa0ba71990f3812952b7: [workflow](https://github.com/wawan-wfs/WFS-StoryBoost/actions/runs/45651350422), 2/4 jobs pass. Build 254 host checks and debug APKs pass; API35 install/launch and screenshot pass. Downloaded and CRC-checked both JUnit ZIPs, both preview evidence ZIPs, and screenshot ZIP. XML testcase counts API29 32 passed/1 failed/18 skipped; API35 41 passed/1 failed/18 skipped. Both failed only timelineAdjustmentPanelStagesCancelApplyAndReset, AssertionError Missing dialog button Batal. Exact cause of the missing text is not proven (native all-caps/theme is a likely explanation). Both legacySchemaReadOnlyAndV2RoundTrip, baseline preview, source cancellation and timelineAdjustedRepeatedClipRendersColorAndMute passed. Actual decoded PCM muted RMS 0.0 on both preview/export; audible RMS API29 0.08778415992462482 and API35 0.08792614431994573 on both paths. Two-second preview render/ready API29 43492/43948ms and API35 5296/5923ms. No speedup claim. Connected wrapper exit 1, no summary and later force-stop/provider phases did not run. HDR capabilities skipped; stable signing skipped.
+
+## Repair candidate
+
+Native Cancel/Apply buttons retain framework IDs, use explicit accessibility descriptions and non-transformed labels. 48dp touch targets for mute/reset/actions. Instrumentation uses dialog-root scoped Espresso real clicks by ID plus content description, scrolls the real editor and dialog, checks staged changes before cancel/apply and reset, undo/redo/recreation and source hash. The prior case-sensitive label lookup is removed, not the acceptance method or assertions. No new version or features. Repair must pass exact-head CI; no runtime evidence claimed for it yet.

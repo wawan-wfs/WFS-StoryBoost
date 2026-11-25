@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta17 repair checkpoint
+
+Run 45651350422 at bb8bda6: 2/4, build and install pass; API29/35 fail one staged dialog test each. Actual XML and PCM evidence reviewed; migration, color/mute and preview tests passed, later force-stop/provider phases not executed. Repair uses native action IDs and real Espresso dialog clicks; exact-head retest required. 23/32 remains unchanged.
+
 ## Beta17 candidate
 
 Beta16 exact head d0b7d43 passed 4/4 in run 45552840094. Beta17 per-clip edits, v2 draft, shared color pipeline and native sequence strip implemented; 62 exact-source local timeline checks pass; exact-head Android verification pending. Keep 23/32 (71.875%). See BETA17_QA.md.

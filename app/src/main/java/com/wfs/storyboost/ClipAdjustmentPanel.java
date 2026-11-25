@@ -27,14 +27,25 @@ final class ClipAdjustmentPanel {
         SeekBar contrast=slider(activity,form,"Contrast",prior.contrast);
         SeekBar saturation=slider(activity,form,"Saturation",prior.saturation);
         CheckBox mute=new CheckBox(activity);mute.setText("Bisukan audio klip");mute.setTextColor(StudioUi.TEXT);
-        mute.setChecked(prior.mute);form.addView(mute);
-        android.widget.Button reset=StudioUi.button(activity,"Reset penyesuaian",false);form.addView(reset);
+        mute.setChecked(prior.mute);mute.setContentDescription("Bisukan audio klip");
+        mute.setMinHeight(StudioUi.dp(activity,48));form.addView(mute);
+        android.widget.Button reset=StudioUi.button(activity,"Reset penyesuaian",false);
+        reset.setContentDescription("Reset penyesuaian klip");
+        form.addView(reset,new LinearLayout.LayoutParams(-1,StudioUi.dp(activity,48)));
         reset.setOnClickListener(v->{look.setSelection(ColorLooks.ORIGINAL);brightness.setProgress(100);
             contrast.setProgress(100);saturation.setProgress(100);mute.setChecked(false);});
-        ScrollView scroll=new ScrollView(activity);scroll.addView(form);
+        ScrollView scroll=new ScrollView(activity);scroll.setFillViewport(false);
+        scroll.addView(form,new ScrollView.LayoutParams(-1,-2));
         AlertDialog dialog=new AlertDialog.Builder(activity).setTitle("Sesuaikan klip "+(index+1))
                 .setView(scroll).setNegativeButton("Batal",null).setPositiveButton("Terapkan",null).show();
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+        // Keep native framework button IDs; text transformation varies by theme/API.
+        android.widget.Button cancel=dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+        android.widget.Button confirm=dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        cancel.setAllCaps(false);confirm.setAllCaps(false);
+        cancel.setContentDescription("Batalkan penyesuaian klip");
+        confirm.setContentDescription("Terapkan penyesuaian klip");
+        cancel.setMinHeight(StudioUi.dp(activity,48));confirm.setMinHeight(StudioUi.dp(activity,48));
+        confirm.setOnClickListener(v->{
             ClipAdjustments next=new ClipAdjustments(look.getSelectedItemPosition(),brightness.getProgress()-100,
                     contrast.getProgress()-100,saturation.getProgress()-100,mute.isChecked());
             if(apply.test(next))dialog.dismiss();
