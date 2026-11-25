@@ -24,8 +24,8 @@ class EvidenceTest(unittest.TestCase):
         self.write_xml()
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
-        cases = [f'<testcase classname="{qa.CLASS}" name="{n}">{tag}</testcase>'
-                 for n, tag in zip(qa.REQUIRED, (first, second, ""))]
+        cases = [f'<testcase classname="{qa.CLASS if n != "legacySchemaReadOnlyAndV2RoundTrip" else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
+                 for n, tag in zip(qa.REQUIRED, (first, second, "", "", ""))]
         if omit:
             cases.pop()
         if duplicate:

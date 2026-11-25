@@ -25,7 +25,7 @@ set -e
 out=app/build/outputs/androidTest-results/connected
 mkdir -p "$out"
 cat > "$out/TEST-fixture.xml" <<'XML'
-<testsuite><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustedRepeatedClipRendersColorAndMute"/></testsuite>
+<testsuite><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustedRepeatedClipRendersColorAndMute"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustmentPanelStagesCancelApplyAndReset"/><testcase classname="com.wfs.storyboost.TimelineAdjustmentsQaTest" name="legacySchemaReadOnlyAndV2RoundTrip"/></testsuite>
 XML
 if [[ "${MOCK_GRADLE:-ok}" == skip ]]; then sed -i 's@<testcase @<testcase @;s@Recreation"/>@Recreation"><skipped/></testcase>@' "$out/TEST-fixture.xml"; fi
 MOCK

@@ -13,5 +13,9 @@ Baseline Beta16 d0b7d435923d3e95673dc762b13dc83ea2a83858 accepted in run 4555284
 ## Performance and AI
 API29 43.489s vs API35 3.937s for 2s baseline rendering, single emulator samples, no claim of speedup. Adjustments stage without encoding on every slider movement; only explicit Preview/Export encodes. Need 2/10/30s cold/warm runs, PSS/thermal and physical tests. DnCNN and portrait models preserved, no deblur/SR activation or real-photo quality claim.
 
+## Local evidence
+
+62 pure-Java timeline assertions passed on 2026-11-25 (40 retained, 22 added). Exact Git blob SHA-1 for TimelineProject.java 13fa46acade5e978a01529334eceb7e4469a09e8, ClipAdjustments.java 1de328029e90b8ac77ee518123dbbd7942924c85, ColorLooks.java dd3012ce4deb8572ef35cb5c74ba95db8710cfad, TimelineProjectTest.java 1116f932b473c25805967c5125d39f1288467c8f matched local git hash-object before execution. No Android compilation, encoder or screenshots for this candidate. The other baseline suites were verified on Beta16, not rerun on Beta17 in this session.
+
 ## Open gates
-Run manually on API29/35. Check actual new tests and all existing preview, provider, process-death, HDR capability, photo/AI, viewport and cancel regressions. Inspect the new decoded PCM muted-window vs audible-window test; add UI staged cancel/reset/apply automation at small and large viewports, real portrait quality and hardware evidence. Keep roadmap 23/32 until independent module acceptance. No main promotion.
+Run manually on API29/35. Check actual new tests and all existing preview, provider, process-death, HDR capability, photo/AI, viewport and cancel regressions. Inspect the new decoded PCM muted-window vs audible-window test and staged cancel/apply/reset/undo/redo/recreate UI automation; add dedicated small and large viewport coverage, real portrait quality and hardware evidence. Keep roadmap 23/32 until independent module acceptance. No main promotion.

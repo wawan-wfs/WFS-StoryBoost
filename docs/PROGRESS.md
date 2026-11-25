@@ -4,7 +4,7 @@ This is a **feature roadmap coverage estimate** for the target v3.0, not a claim
 
 ## Beta17 candidate
 
-Beta16 exact head d0b7d43 passed 4/4 in run 45552840094. Beta17 per-clip edits, v2 draft, shared color pipeline and native sequence strip implemented; exact-head Android verification pending. Keep 23/32 (71.875%). See BETA17_QA.md.
+Beta16 exact head d0b7d43 passed 4/4 in run 45552840094. Beta17 per-clip edits, v2 draft, shared color pipeline and native sequence strip implemented; 62 exact-source local timeline checks pass; exact-head Android verification pending. Keep 23/32 (71.875%). See BETA17_QA.md.
 
 ## Beta16 accepted on emulator
 

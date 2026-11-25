@@ -642,6 +642,62 @@ public class VideoMediaQaTest {
             assertArrayEquals(hash,hashSource(source));
         }finally{export.delete();if(preview!=null)preview.delete();}
     }
+    @Test(timeout=90000)
+    public void timelineAdjustmentPanelStagesCancelApplyAndReset()throws Exception{
+        Uri source=importFixture("qa-timeline-a.mp4");
+        byte[] original=hashSource(source);
+        TimelineProject draft=TimelineProject.empty().append(
+                TimelineProject.Clip.create(source.toString(),MediaProbe.duration(ctx,source),500,1500));
+        assertTrue(TimelineDraftStore.save(ctx,draft));
+        Intent open=new Intent(ctx,StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
+        UiDevice device=UiDevice.getInstance(inst);
+        try(ActivityScenario<StudioMergeActivity> a=ActivityScenario.launch(open)){
+            openAdjustments(a);
+            androidx.test.uiautomator.UiObject2 mute=device.wait(Until.findObject(By.text("Bisukan audio klip")),5000);
+            assertNotNull(mute);mute.click();
+            tapDialog(device,"Batal");
+            assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.same(ClipAdjustments.NEUTRAL));
+            openAdjustments(a);
+            mute=device.wait(Until.findObject(By.text("Bisukan audio klip")),5000);
+            assertNotNull(mute);mute.click();
+            tapDialog(device,"Terapkan");
+            assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
+            a.onActivity(activity->{
+                android.widget.Button undo=findButton(activity.getWindow().getDecorView(),"Undo");
+                assertNotNull(undo);assertTrue(undo.isEnabled());assertTrue(undo.performClick());
+            });
+            assertFalse(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
+            a.onActivity(activity->{
+                android.widget.Button redo=findButton(activity.getWindow().getDecorView(),"Redo");
+                assertNotNull(redo);assertTrue(redo.isEnabled());assertTrue(redo.performClick());
+            });
+            assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
+            a.recreate();
+            assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.mute);
+            openAdjustments(a);
+            androidx.test.uiautomator.UiObject2 reset=device.wait(Until.findObject(By.text("Reset penyesuaian")),5000);
+            if(reset==null){
+                // Reset is inside the scrollable panel, not the dialog button row.
+                androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Reset penyesuaian"))
+                        .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click());
+            }else reset.click();
+            tapDialog(device,"Terapkan");
+            assertTrue(TimelineDraftStore.load(ctx).clips.get(0).adjustments.same(ClipAdjustments.NEUTRAL));
+            assertArrayEquals(original,hashSource(source));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
+    private void openAdjustments(ActivityScenario<StudioMergeActivity> a){
+        a.onActivity(activity->{
+            android.widget.Button button=findButton(activity.getWindow().getDecorView(),"Color Look • Adjust • Audio");
+            assertNotNull(button);assertTrue(button.isEnabled());assertTrue(button.performClick());
+        });
+    }
+    private static void tapDialog(UiDevice device,String label){
+        androidx.test.uiautomator.UiObject2 button=device.wait(Until.findObject(By.text(label)),5000);
+        assertNotNull("Missing dialog button "+label,button);button.click();
+        device.waitForIdle();
+    }
+
     private File renderAdjusted(TimelineProject draft,boolean privatePreview)throws Exception{
         CountDownLatch done=new CountDownLatch(1);
         AtomicReference<File> result=new AtomicReference<>();

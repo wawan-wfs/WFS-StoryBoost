@@ -12,6 +12,8 @@ REQUIRED = (
     "timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation",
     "timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion",
     "timelineAdjustedRepeatedClipRendersColorAndMute",
+    "timelineAdjustmentPanelStagesCancelApplyAndReset",
+    "legacySchemaReadOnlyAndV2RoundTrip",
 )
 
 
@@ -24,8 +26,10 @@ def evidence(reports, log, api, commit):
         raise ValueError("No Android JUnit XML reports")
     for path in files:
         for case in ET.parse(path).iter("testcase"):
-            if case.get("classname") == CLASS and case.get("name") in found:
-                found[case.get("name")].append(case)
+            name=case.get("name")
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name=="legacySchemaReadOnlyAndV2RoundTrip" else CLASS)
+            if case.get("classname") == expected_class and name in found:
+                found[name].append(case)
     for name, cases in found.items():
         if len(cases) != 1:
             raise ValueError(f"Expected one result for {name}, got {len(cases)}")
