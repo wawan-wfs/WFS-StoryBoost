@@ -16,7 +16,7 @@ final class TimelineProject {
         final String id,uri;
         final long duration,in,out;
         final ClipAdjustments adjustments;
-        final int gainStart,gainEnd;
+        final int gainStart,gainEnd,zoomStart,zoomEnd;
 
         Clip(String id,String uri,long duration,long in,long out){
             this(id,uri,duration,in,out,ClipAdjustments.NEUTRAL);
@@ -25,13 +25,17 @@ final class TimelineProject {
             this(id,uri,duration,in,out,adjustments,100,100);
         }
         Clip(String id,String uri,long duration,long in,long out,ClipAdjustments adjustments,int gainStart,int gainEnd){
+            this(id,uri,duration,in,out,adjustments,gainStart,gainEnd,100,100);
+        }
+        Clip(String id,String uri,long duration,long in,long out,ClipAdjustments adjustments,int gainStart,int gainEnd,int zoomStart,int zoomEnd){
+            if(zoomStart<50||zoomStart>200||zoomEnd<50||zoomEnd>200)throw new IllegalArgumentException("Zoom 50–200%.");
             if(gainStart<25||gainStart>150||gainEnd<25||gainEnd>150)throw new IllegalArgumentException("Keyframe gain 25–150%.");
             if(adjustments==null)throw new IllegalArgumentException("Pengaturan klip tidak tersedia.");
             if(id==null||id.isEmpty()||id.length()>64||
                     uri==null||uri.length()>4096||!uri.startsWith("content://")||
                     duration<=0||duration>MAX_SOURCE_MS||in<0||out<=in||out>duration)
                 throw new IllegalArgumentException("Rentang atau sumber klip tidak valid.");
-            this.id=id;this.uri=uri;this.duration=duration;this.in=in;this.out=out;this.adjustments=adjustments;this.gainStart=gainStart;this.gainEnd=gainEnd;
+            this.id=id;this.uri=uri;this.duration=duration;this.in=in;this.out=out;this.adjustments=adjustments;this.gainStart=gainStart;this.gainEnd=gainEnd;this.zoomStart=zoomStart;this.zoomEnd=zoomEnd;
         }
         static Clip create(String uri,long duration,long in,long out){
             return new Clip(UUID.randomUUID().toString(),uri,duration,in,out);
@@ -40,10 +44,13 @@ final class TimelineProject {
             double fraction=Math.max(0,Math.min(1,(sourceUs-in*1000L)/(double)(length()*1000L)));
             return (float)((gainStart+(gainEnd-gainStart)*fraction)/100d);
         }
+        float zoomAt(long sourceUs){double t=Math.max(0,Math.min(1,(sourceUs-in*1000L)/(double)(length()*1000L)));return (float)((zoomStart+(zoomEnd-zoomStart)*t)/100d);}
         Clip trim(long start,long end){return new Clip(id,uri,duration,start,end,adjustments,
-                Math.round(gainAt(start*1000L)*100),Math.round(gainAt(end*1000L)*100));}
-        Clip adjust(ClipAdjustments next){return adjustments.same(next)?this:new Clip(id,uri,duration,in,out,next,gainStart,gainEnd);}
-        Clip keyframes(int first,int last){return gainStart==first&&gainEnd==last?this:new Clip(id,uri,duration,in,out,adjustments,first,last);}
+                Math.round(gainAt(start*1000L)*100),Math.round(gainAt(end*1000L)*100),
+                Math.round(zoomAt(start*1000L)*100),Math.round(zoomAt(end*1000L)*100));}
+        Clip adjust(ClipAdjustments next){return adjustments.same(next)?this:new Clip(id,uri,duration,in,out,next,gainStart,gainEnd,zoomStart,zoomEnd);}
+        Clip keyframes(int first,int last){return gainStart==first&&gainEnd==last?this:new Clip(id,uri,duration,in,out,adjustments,first,last,zoomStart,zoomEnd);}
+        Clip zoom(int first,int last){return first==zoomStart&&last==zoomEnd?this:new Clip(id,uri,duration,in,out,adjustments,gainStart,gainEnd,first,last);}
         long length(){return out-in;}
     }
 
@@ -151,6 +158,12 @@ final class TimelineProject {
         if(old==edited)return this;
         List<Clip> next=new ArrayList<>(clips);next.set(index,edited);return withClips(next);
     }
+    TimelineProject zoom(int index,int first,int last){
+        Clip old=clips.get(index),next=old.zoom(first,last);if(old==next)return this;
+        List<Clip> items=new ArrayList<>(clips);items.set(index,next);return withClips(items);
+    }
+    boolean hasZoom(){for(Clip c:clips)if(c.zoomStart!=100||c.zoomEnd!=100)return true;return false;}
+    float zoomAtUs(long us){int index=clipIndexAt(us/1000L);if(index<0||us<0)return 1f;Clip c=clips.get(index);return c.zoomAt(c.in*1000L+us-startOf(index)*1000L);}
     boolean hasKeyframes(){for(Clip c:clips)if(c.gainStart!=100||c.gainEnd!=100)return true;return false;}
     float gainAtUs(long us){
         int index=clipIndexAt(us/1000L);
@@ -164,12 +177,12 @@ final class TimelineProject {
         List<Clip> next=new ArrayList<>(clips);
         next.set(index,clip.trim(clip.in,sourceMs));
         next.add(index+1,new Clip(UUID.randomUUID().toString(),clip.uri,clip.duration,sourceMs,clip.out,clip.adjustments,
-                Math.round(clip.gainAt(sourceMs*1000L)*100),clip.gainEnd));
+                Math.round(clip.gainAt(sourceMs*1000L)*100),clip.gainEnd,Math.round(clip.zoomAt(sourceMs*1000L)*100),clip.zoomEnd));
         return withClips(next);
     }
     TimelineProject duplicate(int index){
         Clip clip=clips.get(index);List<Clip> next=new ArrayList<>(clips);
-        next.add(index+1,new Clip(UUID.randomUUID().toString(),clip.uri,clip.duration,clip.in,clip.out,clip.adjustments,clip.gainStart,clip.gainEnd));
+        next.add(index+1,new Clip(UUID.randomUUID().toString(),clip.uri,clip.duration,clip.in,clip.out,clip.adjustments,clip.gainStart,clip.gainEnd,clip.zoomStart,clip.zoomEnd));
         return withClips(next);
     }
     /** Dip to black without shortening or overlapping clips, with short-clip clamping. */

@@ -667,6 +667,46 @@ public class VideoMediaQaTest {
         }finally{TimelineDraftStore.clear(ctx);}
     }
     @Test(timeout=300000)
+    public void timelineZoomTransformsActualFrames()throws Exception{
+        Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);
+        TimelineProject project=TimelineProject.empty()
+            .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+            .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+            .zoom(0,50,50).zoom(1,150,150);
+        File output=renderAdjusted(project,false),preview=null;
+        try{
+            preview=renderAdjusted(project,true);
+            for(File file:new File[]{output,preview}){
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    android.graphics.Bitmap small=reader.getFrameAtTime(350000,MediaMetadataRetriever.OPTION_CLOSEST);
+                    android.graphics.Bitmap large=reader.getFrameAtTime(1350000,MediaMetadataRetriever.OPTION_CLOSEST);
+                    assertNotNull(small);assertNotNull(large);
+                    try{
+                        assertTrue("Zoom out must introduce black border",((small.getPixel(15,15)>>16)&255)<25);
+                        assertTrue("Zoom in must fill the frame",((large.getPixel(15,15)>>16)&255)>70);
+                        assertTrue("Zoom out center must remain visible",((small.getPixel(small.getWidth()/2,small.getHeight()/2)>>16)&255)>70);
+                    }finally{small.recycle();large.recycle();}
+                }
+            }
+            assertArrayEquals(hash,hashSource(source));
+        }finally{output.delete();if(preview!=null)preview.delete();}
+    }
+    @Test(timeout=90000)
+    public void timelineWaveformCoversLateAudio()throws Exception{
+        Uri source=importFixture("qa-waveform-late.mp4");byte[] original=hashSource(source);
+        long duration=MediaProbe.inspect(ctx,source).audioDurationMs;
+        assertTrue(duration>=19950);
+        long end=Math.min(20000,duration);
+        float[] waveform=AudioWaveformView.decode(ctx,new TimelineProject.Audio(source.toString(),duration,0,end,0,100));
+        float early=0,late=0;
+        for(int i=0;i<60;i++)early=Math.max(early,waveform[i]);
+        for(int i=68;i<waveform.length;i++)late=Math.max(late,waveform[i]);
+        assertTrue("Late waveform tone missing",late>.03f);
+        assertTrue("Early silent segment must be quiet",early<late*.1f);
+        assertArrayEquals(original,hashSource(source));
+    }
+    @Test(timeout=300000)
     public void timelineDualTrackKeyframeAndWaveformRealMedia()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);
         // Distinct tones remove phase-cancellation ambiguity: b=780Hz, a=440Hz.

@@ -20,6 +20,12 @@ for variant in a b; do
     -c:v libx264 -pix_fmt yuv420p -preset ultrafast -c:a aac -b:a 80k \
     -movflags +faststart "$OUT/qa-timeline-$variant.mp4"
 done
+# A real long waveform fixture: silence followed by a late 440 Hz tone.
+ffmpeg -hide_banner -loglevel error -nostdin -y \
+ -f lavfi -i color=c=gray:size=160x160:rate=12 \
+ -f lavfi -i 'aevalsrc=if(lt(t\,16)\,0\,0.1*sin(2*PI*440*t)):s=48000' \
+ -t 20 -c:v libx264 -pix_fmt yuv420p -preset ultrafast -c:a aac -b:a 80k \
+ -movflags +faststart "$OUT/qa-waveform-late.mp4"
 # Extended real encoded H.264/AAC is slow enough to exercise non-zero
 # asynchronous Media3 progress before cancellation on the API35 emulator.
 ffmpeg -hide_banner -loglevel error -nostdin -y \

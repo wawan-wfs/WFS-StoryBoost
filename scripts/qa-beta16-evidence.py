@@ -20,6 +20,9 @@ REQUIRED = (
     "dualTrackAndKeyframesV4RoundTrip",
     "timelineDualTrackKeyframeAndWaveformRealMedia",
     "timelineVoiceAndKeyframeUiPersists",
+    "timelineWaveformCoversLateAudio",
+    "zoomV5RoundTrip",
+    "timelineZoomTransformsActualFrames",
 )
 
 
@@ -33,7 +36,7 @@ def evidence(reports, log, api, commit):
     for path in files:
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
-            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip") else CLASS)
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip") else CLASS)
             if case.get("classname") == expected_class and name in found:
                 found[name].append(case)
     for name, cases in found.items():

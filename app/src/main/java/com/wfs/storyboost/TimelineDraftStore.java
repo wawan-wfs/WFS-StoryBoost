@@ -14,7 +14,7 @@ import java.util.Collections;
 /** One private, versioned timeline slot. Legacy single-source drafts are independent. */
 final class TimelineDraftStore {
     private static final String PREFS="one-track-timeline",KEY="draft";
-    private static final int VERSION=4,MAX_CHARS=90000;
+    private static final int VERSION=5,MAX_CHARS=90000;
     private TimelineDraftStore(){}
     private static SharedPreferences prefs(Context c){return c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);}
 
@@ -40,7 +40,7 @@ final class TimelineDraftStore {
                             strictInt(a,"contrast"),strictInt(a,"saturation"),(Boolean)mute);
                 }
                 clips.add(new TimelineProject.Clip(e.getString("id"),e.getString("uri"),e.getLong("duration"),
-                        e.getLong("inMs"),e.getLong("outMs"),edits,version>=4?strictInt(e,"gainStart"):100,version>=4?strictInt(e,"gainEnd"):100));
+                        e.getLong("inMs"),e.getLong("outMs"),edits,version>=4?strictInt(e,"gainStart"):100,version>=4?strictInt(e,"gainEnd"):100,version>=5?strictInt(e,"zoomStart"):100,version>=5?strictInt(e,"zoomEnd"):100));
             }
             TimelineProject.Caption caption=null;
             JSONObject cap=j.optJSONObject("caption");
@@ -80,7 +80,7 @@ final class TimelineDraftStore {
 
     static boolean save(Context c,TimelineProject project){
         try{
-            int schema=project.voice!=null||project.hasKeyframes()?VERSION:project.audio!=null||project.fadeMs!=0?3:2;
+            int schema=project.hasZoom()?VERSION:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
             JSONArray entries=new JSONArray();
             for(TimelineProject.Clip clip:project.clips){
                 JSONObject entry=new JSONObject().put("id",clip.id).put("uri",clip.uri)
@@ -88,7 +88,8 @@ final class TimelineDraftStore {
                         .put("adjustments",new JSONObject().put("look",clip.adjustments.look)
                                 .put("brightness",clip.adjustments.brightness).put("contrast",clip.adjustments.contrast)
                                 .put("saturation",clip.adjustments.saturation).put("mute",clip.adjustments.mute));
-                if(schema==4)entry.put("gainStart",clip.gainStart).put("gainEnd",clip.gainEnd);
+                if(schema>=4)entry.put("gainStart",clip.gainStart).put("gainEnd",clip.gainEnd);
+                if(schema>=5)entry.put("zoomStart",clip.zoomStart).put("zoomEnd",clip.zoomEnd);
                 entries.put(entry);
             }
             // Preserve v2 compatibility for projects without new soundtrack/fade data.

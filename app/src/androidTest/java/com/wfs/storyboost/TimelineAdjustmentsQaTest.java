@@ -16,6 +16,17 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void zoomV5RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/z",2000,0,2000)).zoom(0,50,150);
+            assertTrue(TimelineDraftStore.save(ctx,project));String raw=prefs.getString("draft",null);
+            assertEquals(5,new JSONObject(raw).getInt("version"));TimelineProject loaded=TimelineDraftStore.load(ctx);
+            assertNotNull(loaded);assertEquals(50,loaded.clips.get(0).zoomStart);assertEquals(150,loaded.clips.get(0).zoomEnd);
+            assertTrue(prefs.edit().putString("draft",raw.replace("\"zoomEnd\":150","\"zoomEnd\":201")).commit());assertNull(TimelineDraftStore.load(ctx));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void dualTrackAndKeyframesV4RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);

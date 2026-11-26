@@ -622,16 +622,20 @@ public final class StudioMergeActivity extends Activity {
         final int index=selected;final TimelineProject prior=timeline.current();
         TimelineProject.Clip clip=prior.clips.get(index);
         LinearLayout form=StudioUi.card(this,16);
-        form.addView(txt("Animasi gain RGB linear dari awal hingga akhir klip. Hasil di Preview Timeline.",12,StudioUi.MUTED,false));
+        form.addView(txt("Animasi pencahayaan dan zoom linear. Hasil di Preview Timeline.",12,StudioUi.MUTED,false));
         EditText first=numberField(form,"Gain awal (25–150%)",clip.gainStart);
         EditText last=numberField(form,"Gain akhir (25–150%)",clip.gainEnd);
-        AlertDialog panel=new AlertDialog.Builder(this).setTitle("Keyframe pencahayaan").setView(form)
+        EditText zoomFirst=numberField(form,"Zoom awal (50–200%)",clip.zoomStart);
+        EditText zoomLast=numberField(form,"Zoom akhir (50–200%)",clip.zoomEnd);
+        ScrollView scroll=new ScrollView(this);scroll.addView(form);
+        AlertDialog panel=new AlertDialog.Builder(this).setTitle("Keyframe").setView(scroll)
                 .setNegativeButton("Batal",null).setPositiveButton("Terapkan",null).show();
         panel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(!canEditTimeline()||timeline.current()!=prior)return;
             try{if(editTimeline(prior.keyframes(index,Integer.parseInt(first.getText().toString()),
-                    Integer.parseInt(last.getText().toString()))))panel.dismiss();}
-            catch(IllegalArgumentException ex){toast("Gain harus 25–150%.");}
+                    Integer.parseInt(last.getText().toString())).zoom(index,Integer.parseInt(zoomFirst.getText().toString()),
+                    Integer.parseInt(zoomLast.getText().toString()))))panel.dismiss();}
+            catch(IllegalArgumentException ex){toast("Gain 25–150%, zoom 50–200%.");}
         });
     }
     private void editClipAdjustments(){

@@ -91,7 +91,7 @@ public final class ProcessDeathTimelineTest {
                 "Caption rentang",400,1750,0xffffd786)).adjust(1,new ClipAdjustments(6,30,-20,15,true));
         edited=edited.soundtrack(new TimelineProject.Audio(second.toString(),MediaProbe.duration(app(),second),500,1000,250,40)).fade(150)
                 .voiceTrack(new TimelineProject.Audio(second.toString(),MediaProbe.duration(app(),second),500,1000,750,35))
-                .keyframes(1,40,120);
+                .keyframes(1,40,120).zoom(1,60,140);
         String firstId=edited.clips.get(0).id,secondId=edited.clips.get(1).id;
         assertTrue(TimelineDraftStore.save(app(),edited));
         ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen());
@@ -151,6 +151,7 @@ public final class ProcessDeathTimelineTest {
             assertEquals(500,saved.voice.in);assertEquals(1000,saved.voice.out);
             assertEquals(750,saved.voice.start);assertEquals(35,saved.voice.volume);
             assertEquals(40,saved.clips.get(0).gainStart);assertEquals(120,saved.clips.get(0).gainEnd);
+            assertEquals(60,saved.clips.get(0).zoomStart);assertEquals(140,saved.clips.get(0).zoomEnd);
             assertEquals(p.getString("shaA",""),sha(first));assertEquals(p.getString("shaB",""),sha(second));
             assertEquals("Migrasi",StudioDraftStore.load(app(),first).options.caption);
             try(ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen())){

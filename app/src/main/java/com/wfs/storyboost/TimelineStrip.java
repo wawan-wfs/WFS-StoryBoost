@@ -113,7 +113,7 @@ final class TimelineStrip extends LinearLayout {
         scrub.setEnabled(!model.clips.isEmpty());
         audioLane.setText(model.audio==null?"AUDIO • belum ada soundtrack":"AUDIO • "+time(model.audio.start)+" – "+time(model.audio.end())+" • "+model.audio.volume+"%");
         voiceLane.setText(model.voice==null?"VOICE • belum ada track":"VOICE • "+time(model.voice.start)+" – "+time(model.voice.end())+" • "+model.voice.volume+"%");
-        audioWave.bind(model.audio);voiceWave.bind(model.voice);
+        audioWave.bind(model.audio,model.duration());voiceWave.bind(model.voice,model.duration());
         captionLane.setText(model.caption==null?"CAPTION • kosong":"CAPTION • "+time(model.caption.in)+" – "+time(model.caption.out));
         if(model.clips.isEmpty()){status.setText("Timeline kosong");selectionKey="";positionMs=0;scrub.setProgress(0);return;}
         positionMs=Math.max(0,Math.min(positionMs,model.duration()-1));showPosition();
@@ -125,7 +125,7 @@ final class TimelineStrip extends LinearLayout {
             int width=zoom*Math.max(100,Math.min(240,(int)(100+220d*clip.length()/model.duration())));
             cell.addView(StudioUi.text(getContext(),time(start),10,StudioUi.MUTED,false));
             Button tile=StudioUi.button(getContext(),"Klip "+(i+1)+(clip.adjustments.mute?" · Bisu":"")+
-                    (clip.adjustments.hasColor()?" · FX":"")+(clip.gainStart!=100||clip.gainEnd!=100?" · KF":""),i==selected);
+                    (clip.adjustments.hasColor()?" · FX":"")+(clip.gainStart!=100||clip.gainEnd!=100||clip.zoomStart!=100||clip.zoomEnd!=100?" · KF":""),i==selected);
             tile.setContentDescription("Pilih segmen timeline "+(i+1)+", "+time(start)+" sampai "+time(start+clip.length()));
             tile.setSelected(i==selected);
             tile.setOnClickListener(v->select.accept(index));

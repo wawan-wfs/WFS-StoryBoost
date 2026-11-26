@@ -1,8 +1,6 @@
-# WFS StoryBoost — Beta19 integrated acceptance and next batch
-
-Baseline Beta18 7bcf7948fd9f4fb4f879ddc8328b817887e9e52d run 45761920569 4/4. Resolve latest qa/beta18-* candidate (Beta19 development stays under authorized QA pattern). Read BETA19_QA.md, BETA19_MODEL_CANDIDATES.md, BETA18_QA.md, BETA18_AI_ACCEPTANCE.md and CHANGELOG. Single integrated push before CI; no deployment/force push.
-
-1. Verify all gates API29/35 including dualTrackAndKeyframesV4RoundTrip, timelineDualTrackKeyframeAndWaveformRealMedia, timelineVoiceAndKeyframeUiPersists, v4 force-stop, PCM evidence, legacy tests and source hash. Correct actual errors. Add voice revocation, cancel, real drag/viewport tests and preview/export 2/10/30s benchmarks with bitrate/PSS.
-2. Improve all editor screens, complete proportional full-duration waveform, keyframe curves, multi-video layer and true overlap crossfade with validated compositing, audio transition and timeline semantics; no fake visual output.
-3. Acquire only verified licensed and pinned model artifacts, test real offline inference with synthetic and consented real photo evidence, memory and physical ARM64; see model ledger. No unverified weights or claims.
-4. Preserve branding, old gates, scoped QA auto CI and manual signing. Report actual artifacts, regressions, changelog, source, progress and next prompt.
+# WFS StoryBoost — Integrated Beta20 acceptance
+Accepted Beta18 baseline 7bcf7948fd9f4fb4f879ddc8328b817887e9e52d run 45761920569. Beta19 run 45839456557 failed both instrumented jobs at dual-track RMS. Read BETA19_QA.md and BETA20_QA.md. Inspect latest qa/beta18-* head; one integrated candidate push, no main promotion, force push or deployment.
+1. Inspect exact-head API29/35 logs/XML and mandatory spectral 440/780 + RMS and equal-luma gain test. If actual mixer fails, correct production mixing; never weaken gates. Verify 20s late PCM waveform, zoomV5RoundTrip, actual preview/export zoom pixels and legacy tests; capture measured metrics. Preserve source integrity, cancellation, UI and v5 process death. Add separate voice revocation and viewport/drag gestures.
+2. Implement true overlap compositor with duration/PTS mapping, frame blending, audio ramps, and decoded end-to-end oracle; retain existing dip. Complete full-length waveform caching, multi-video layers, transform keyframe curves, independent premium redesign all screens, performance 2/10/30s and physical memory/HD benchmarks.
+3. Complete BETA19_MODEL_CANDIDATES.md and BETA18_AI_ACCEPTANCE.md: pin licensed artifacts, verify weights and redistribution, run real offline inference and consented photo/physical ARM64 quality benchmarks before activation. No synthetic or non-neural claim as model results.
+4. Provide exact source, APK if accepted, screenshot, log/XML, changelog, feature matrix and next prompt. Keep roadmap 23/32 until distinct independently accepted recount. CI automatic only QA, concurrency retained, signing manual-only.

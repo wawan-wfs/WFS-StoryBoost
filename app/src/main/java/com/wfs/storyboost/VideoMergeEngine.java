@@ -137,6 +137,9 @@ public final class VideoMergeEngine {
         }
         Composition.Builder builder=new Composition.Builder(sequences);
         List<Effect> globalEffects=new ArrayList<>();
+        if(draft.hasZoom())globalEffects.add((androidx.media3.effect.MatrixTransformation)timeUs->{
+            android.graphics.Matrix matrix=new android.graphics.Matrix();float scale=draft.zoomAtUs(timeUs);matrix.setScale(scale,scale);return matrix;
+        });
         if(draft.hasKeyframes()||(draft.fadeMs>0&&draft.clips.size()>1)){
             globalEffects.add((androidx.media3.effect.RgbMatrix)(timeUs,useHdr)->{
                 float g=draft.fadeGain(timeUs)*draft.gainAtUs(timeUs);

@@ -37,6 +37,9 @@ public final class TimelineBatchTest {
         check(keySplit.voice==v.voice);check(keySplit.audio==sound);check(keySplit.move(1,0).clips.get(0).gainStart==75);
         check(v.duplicate(0).clips.get(1).gainEnd==125);check(v.remove(1).voice==null);check(v.voiceTrack(null).audio==sound);
         bad(()->v.keyframes(0,0,100));bad(()->v.voiceTrack(new TimelineProject.Audio("content://qa/v",3000,0,1000,1500,30)));
+        TimelineProject z=v.zoom(0,50,150);check(z.hasZoom());check(z.zoomAtUs(0)==.5f);check(Math.abs(z.zoomAtUs(500000)-1f)<.001f);
+        TimelineProject zs=z.split(0,1000);check(zs.clips.get(0).zoomEnd==100);check(zs.clips.get(1).zoomStart==100);check(z.duplicate(0).clips.get(1).zoomEnd==150);
+        check(z.adjust(0,ClipAdjustments.NEUTRAL).clips.get(0).zoomStart==50);check(!z.zoom(0,100,100).hasZoom());bad(()->z.zoom(0,49,150));
         System.out.println("PASS "+checks+" integrated timeline assertions");
     }
 }

@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta20 integrated candidate
+
+Beta19 run 45839456557 2/4 failed dual-track RMS on both APIs. New spectral oracle, full-range bounded waveform, animated zoom and v5 storage implemented; exact-head CI pending. Roadmap 23/32 unchanged.
+
 ## Beta19 candidate
 
 Beta18 accepted 4/4 on API29/35; 399 host checks, decoded independent soundtrack/dip and v3 process recovery. Beta19 dual lane, PCM waveform and keyframes implemented but unverified. Keep 23/32 until distinct roadmap module recount with evidence. See BETA19_QA.md.

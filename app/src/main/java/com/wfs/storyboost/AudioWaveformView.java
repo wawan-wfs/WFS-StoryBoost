@@ -17,12 +17,15 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Future;
 
-/** Real PCM peak overview of the first 15 seconds of a trimmed audio selection.
+/** Real PCM peak overview across the selected audio range, aligned to project duration.
+ * Full decode up to two minutes; longer clips use explicitly labelled distributed samples.
  * No disk cache, bounded 80 bins, cancels on replacement or lifecycle exit.
  */
 final class AudioWaveformView extends View {
     static final int BINS=80;
-    static final long MAX_MS=15000;
+    static final long MAX_MS=120000;
+    static final int SAMPLE_WINDOWS=8;
+    private long timelineDuration;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>());
     private Future<?> task;
@@ -32,7 +35,8 @@ final class AudioWaveformView extends View {
     private int generation;
     private boolean closed;
     AudioWaveformView(Context context){super(context);setContentDescription(state);}
-    void bind(TimelineProject.Audio audio){
+    void bind(TimelineProject.Audio audio,long total){
+        timelineDuration=total;invalidate();
         if(closed)return;
         if(audio==current){
             if(audio==null||SourceAccess.canRead(getContext(),Uri.parse(audio.uri)))return;
@@ -48,7 +52,7 @@ final class AudioWaveformView extends View {
             try{result=decode(getContext().getApplicationContext(),audio);}catch(Exception|OutOfMemoryError ignored){}
             float[] decoded=result;
             post(()->{if(closed||token!=generation)return;peaks=decoded;
-                state=decoded==null?"Waveform tidak tersedia":audio.length()>MAX_MS?"PCM 15 detik pertama":"Waveform PCM";
+                state=decoded==null?"Waveform tidak tersedia":audio.length()>MAX_MS?"PCM sampel sepanjang track":"Waveform PCM lengkap";
                 setContentDescription(state);invalidate();});
         });
     }
@@ -56,13 +60,28 @@ final class AudioWaveformView extends View {
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);paint.setColor(StudioUi.INNER);canvas.drawRoundRect(0,0,getWidth(),getHeight(),8,8,paint);
         if(peaks==null){paint.setColor(StudioUi.MUTED);paint.setTextSize(StudioUi.dp(getContext(),11));canvas.drawText(state,8,getHeight()*.65f,paint);return;}
-        float width=getWidth()/(float)BINS,center=getHeight()/2f;
+        if(current==null||timelineDuration<=0)return;
+        float left=getWidth()*current.start/(float)timelineDuration;
+        float span=getWidth()*current.length()/(float)timelineDuration;
+        float width=span/BINS,center=getHeight()/2f;
         paint.setColor(StudioUi.GREEN);paint.setStrokeWidth(Math.max(1,width*.65f));
-        for(int i=0;i<BINS;i++){float h=peaks[i]*center*.9f;canvas.drawLine((i+.5f)*width,center-h,(i+.5f)*width,center+h,paint);}
+        for(int i=0;i<BINS;i++){float h=peaks[i]*center*.9f;float x=left+(i+.5f)*width;canvas.drawLine(x,center-h,x,center+h,paint);}
     }
     static float[] decode(Context context,TimelineProject.Audio audio)throws Exception{
-        Uri uri=Uri.parse(audio.uri);SourceAccess.requireReadable(context,uri);
-        long start=audio.in*1000L,end=Math.min(audio.out,audio.in+MAX_MS)*1000L;
+        if(audio.length()<=MAX_MS)return decodeRange(context,audio.uri,audio.in,audio.out,BINS,30000);
+        float[] all=new float[BINS];long deadline=SystemClock.elapsedRealtime()+40000;
+        for(int window=0;window<SAMPLE_WINDOWS;window++){
+            if(Thread.currentThread().isInterrupted()||SystemClock.elapsedRealtime()>=deadline)throw new java.io.IOException("Waveform sampling cancelled or timed out");
+            long lo=audio.in+audio.length()*window/SAMPLE_WINDOWS,hi=audio.in+audio.length()*(window+1)/SAMPLE_WINDOWS;
+            long middle=lo+(hi-lo)/2,start=middle-750,end=middle+750;
+            float[] part=decodeRange(context,audio.uri,start,end,BINS/SAMPLE_WINDOWS,Math.max(1,deadline-SystemClock.elapsedRealtime()));
+            System.arraycopy(part,0,all,window*part.length,part.length);
+        }
+        return all;
+    }
+    private static float[] decodeRange(Context context,String source,long from,long to,int binCount,long budget)throws Exception{
+        Uri uri=Uri.parse(source);SourceAccess.requireReadable(context,uri);
+        long start=from*1000L,end=to*1000L;
         MediaExtractor ex=new MediaExtractor();MediaCodec codec=null;
         try{
             ex.setDataSource(context,uri,null);MediaFormat format=null;
@@ -77,8 +96,8 @@ final class AudioWaveformView extends View {
             codec.configure(format,null,null,0);codec.start();
             int rate=format.getInteger(MediaFormat.KEY_SAMPLE_RATE),channels=format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
             if(rate<=0||channels<=0)throw new java.io.IOException("Invalid PCM format");
-            boolean fed=false,done=false;long samples=0;float[] bins=new float[BINS];
-            MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();long deadline=SystemClock.elapsedRealtime()+12000;
+            boolean fed=false,done=false;long samples=0;float[] bins=new float[binCount];
+            MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();long deadline=SystemClock.elapsedRealtime()+budget;
             while(!done&&!Thread.currentThread().isInterrupted()&&SystemClock.elapsedRealtime()<deadline){
                 if(!fed){
                     int slot=codec.dequeueInputBuffer(5000);
@@ -102,7 +121,7 @@ final class AudioWaveformView extends View {
                         while(pcm.remaining()>=2){
                             float sample=Math.abs(pcm.getShort()/32768f);
                             long t=info.presentationTimeUs+(n++/channels)*1000000L/rate;
-                            if(t>=start&&t<end){int bin=(int)((t-start)*BINS/(end-start));bins[bin]=Math.max(bins[bin],sample);samples++;}
+                            if(t>=start&&t<end){int bin=(int)((t-start)*binCount/(end-start));bins[bin]=Math.max(bins[bin],sample);samples++;}
                         }
                     }
                     done=(info.flags&MediaCodec.BUFFER_FLAG_END_OF_STREAM)!=0;
