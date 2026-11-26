@@ -2,6 +2,15 @@ name: Build and verify WFS StoryBoost APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - 'qa/beta17-clip-adjustments-20261125'
+      - 'qa/beta18-*'
+
+# At most one active run per ref; a newer pending run may supersede an older pending run.
+concurrency:
+  group: storyboost-apk-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -81,6 +90,7 @@ jobs:
           path: app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: error
       - name: Configure stable release signing if secrets exist
+        if: github.event_name == 'workflow_dispatch'
         id: signing
         shell: bash
         env:

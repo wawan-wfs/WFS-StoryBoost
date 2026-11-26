@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta17 repair CI activation — 2026-11-26
+
+Owner-authorized scoped automatic CI (Beta17 QA and Beta18 QA branches only), manual dispatch retained, per-ref concurrency, stable signing manual-only, no deployment. The Android repair is still awaiting exact-head acceptance; 23/32 unchanged.
+
 ## Beta17 repair checkpoint
 
 Run 45651350422 at bb8bda6: 2/4, build and install pass; API29/35 fail one staged dialog test each. Actual XML and PCM evidence reviewed; migration, color/mute and preview tests passed, later force-stop/provider phases not executed. Repair uses native action IDs and real Espresso dialog clicks; exact-head retest required. 23/32 remains unchanged.

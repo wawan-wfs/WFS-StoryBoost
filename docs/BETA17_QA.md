@@ -27,3 +27,7 @@ Exact source bb8bda67046e80310752fa0ba71990f3812952b7: [workflow](https://github
 ## Repair candidate
 
 Native Cancel/Apply buttons retain framework IDs, use explicit accessibility descriptions and non-transformed labels. 48dp touch targets for mute/reset/actions. Instrumentation uses dialog-root scoped Espresso real clicks by ID plus content description, scrolls the real editor and dialog, checks staged changes before cancel/apply and reset, undo/redo/recreation and source hash. The prior case-sensitive label lookup is removed, not the acceptance method or assertions. No new version or features. Repair must pass exact-head CI; no runtime evidence claimed for it yet.
+
+## CI trigger authorization — 2026-11-26
+
+Owner explicitly enabled automated GitHub Actions for WFS StoryBoost development. Push CI is scoped to the exact Beta17 QA branch and qa/beta18-*; workflow_dispatch retained. Per-ref concurrency prevents overlapping active runs; running jobs are not cancelled, although GitHub may replace an older pending run. Stable signing is manual-only; no deployment, PR trigger, main push trigger or gate removal. This change does not prove the repair passes. Resolve the new exact HEAD and inspect the actual push run, or dispatch once if GitHub does not enqueue it.

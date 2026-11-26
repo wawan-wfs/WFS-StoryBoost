@@ -1,5 +1,9 @@
 # WFS StoryBoost changelog
 
+## Beta17 repair CI activation — 2026-11-26
+- Owner-authorized push CI on Beta17 QA and Beta18 QA branches only; manual dispatch retained, concurrency per ref without cancelling active runs.
+- Stable release signing remains manual-only; no deployment or acceptance changes. Repair runtime acceptance still pending.
+
 ## Beta17 repair — 2026-11-25
 - CI run 45651350422: build and API35 launch pass; both instrumented jobs fail at Missing dialog button Batal. Both real decoded color/PCM and migration tests pass.
 - Repair native action labels/semantics, 48dp touch targets and dialog-root Espresso clicks with staged-state checks. Exact-head CI retest pending.
