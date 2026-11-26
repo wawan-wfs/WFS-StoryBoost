@@ -14,6 +14,9 @@ REQUIRED = (
     "timelineAdjustedRepeatedClipRendersColorAndMute",
     "timelineAdjustmentPanelStagesCancelApplyAndReset",
     "legacySchemaReadOnlyAndV2RoundTrip",
+    "soundtrackAndFadeV3RoundTrip",
+    "timelineSoundtrackAndDipRenderRealMedia",
+    "timelineInteractiveSplitAndSoundtrackPanel",
 )
 
 
@@ -27,7 +30,7 @@ def evidence(reports, log, api, commit):
     for path in files:
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
-            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name=="legacySchemaReadOnlyAndV2RoundTrip" else CLASS)
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip") else CLASS)
             if case.get("classname") == expected_class and name in found:
                 found[name].append(case)
     for name, cases in found.items():
@@ -55,7 +58,12 @@ def evidence(reports, log, api, commit):
         raise ValueError("Missing two-second preview render/player readiness metrics")
     if not any(0 <= s < 1000 for s in seeks) or not any(1000 <= s <= 2250 for s in seeks):
         raise ValueError("Missing settled seek evidence on both sides of the cut")
+    mix = [(float(a), float(b)) for line in lines for a,b in re.findall(
+        r"\bsoundtrackRms=([0-9.eE+-]+) gapRms=([0-9.eE+-]+) dip=verified\b", line)]
+    if len(mix)<2 or not all(0.015<a<=1 and 0<=b<a*0.1 for a,b in mix):
+        raise ValueError("Missing or invalid decoded soundtrack and dip evidence on preview/export")
     return {"commit": commit, "api": api, "scope": "x86_64 emulator connected preview gate",
+            "soundtrack_pcm": [{"audible_rms":a,"gap_rms":b} for a,b in mix],
             "required_tests": {name: "passed" for name in REQUIRED},
             "render": render, "ready": ready, "seek_settled_ms": seeks,
             "junit_files": len(files), "status": "passed"}

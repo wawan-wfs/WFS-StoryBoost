@@ -34,7 +34,7 @@ import java.util.concurrent.Executors;
 
 /**
  * Real multi-clip storyboard with reorder/delete, single-clip preview and
- * Media3 sequence export. Clip transitions and audio mixing are not simulated.
+ * Media3 sequence export, optional independent soundtrack and dip-to-black transitions.
  */
 public final class StudioMergeActivity extends Activity {
     static final String EXTRA_TIMELINE="one_track_timeline",EXTRA_MIGRATE_URI="timeline_migrate_uri";
@@ -718,6 +718,7 @@ public final class StudioMergeActivity extends Activity {
         destroyed=true;mergeStop.set(true);main.removeCallbacksAndMessages(null);
         if(engine!=null&&working)engine.cancel();
         if(renderedPreview!=null)renderedPreview.close();
+        if(timelineStrip!=null)timelineStrip.close();
         // Let a queued writer release its transferred file after seeing cancellation.
         thumbs.shutdown();
         if(preview!=null)preview.stopPlayback();

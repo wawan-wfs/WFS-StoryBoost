@@ -599,6 +599,42 @@ public class VideoMediaQaTest {
         assertArrayEquals(sha,hashSource(kept));
     }
 
+    @Test(timeout=90000)
+    public void timelineInteractiveSplitAndSoundtrackPanel()throws Exception{
+        Uri source=importFixture("qa-timeline-b.mp4");
+        byte[] hash=hashSource(source);
+        TimelineProject base=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+                .soundtrack(new TimelineProject.Audio(source.toString(),2000,0,500,250,50));
+        assertTrue(TimelineDraftStore.save(ctx,base));
+        Intent open=new Intent(ctx,StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
+        try(ActivityScenario<StudioMergeActivity> activity=ActivityScenario.launch(open)){
+            // A real key event on the focused native seek bar changes the playhead.
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Geser playhead timeline"))
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click(),
+                            androidx.test.espresso.action.ViewActions.pressKey(android.view.KeyEvent.KEYCODE_DPAD_RIGHT));
+            tapTimelineControl("Split");
+            TimelineProject split=TimelineDraftStore.load(ctx);assertEquals(2,split.clips.size());
+            assertEquals(1000,split.duration());assertEquals(750,split.audio.end());
+            tapTimelineControl("Duplikat");
+            assertEquals(3,TimelineDraftStore.load(ctx).clips.size());
+            tapTimelineControl("Undo");assertEquals(2,TimelineDraftStore.load(ctx).clips.size());
+            tapTimelineControl("Edit audio");
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Volume audio (1–100%)"))
+                    .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                    .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.replaceText("35"),
+                            androidx.test.espresso.action.ViewActions.closeSoftKeyboard());
+            assertEquals(50,TimelineDraftStore.load(ctx).audio.volume);
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(android.R.id.button1))
+                    .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                    .perform(androidx.test.espresso.action.ViewActions.click());
+            assertEquals(35,TimelineDraftStore.load(ctx).audio.volume);
+            activity.recreate();assertEquals(35,TimelineDraftStore.load(ctx).audio.volume);
+            assertEquals(2,TimelineDraftStore.load(ctx).clips.size());
+            assertArrayEquals(hash,hashSource(source));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
+
     @Test(timeout=300000)
     public void timelineSoundtrackAndDipRenderRealMedia()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");

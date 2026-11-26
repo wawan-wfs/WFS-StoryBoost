@@ -2,7 +2,7 @@
 
 ## Beta18 integrated candidate — 2026-11-26
 - Timeline scrub, zoom, split and duplicate; separate soundtrack, source trim, start offset, gain and dip-to-black transitions; v3 selective draft schema; shared rendered preview/export and source-aware bitrate.
-- Added host assertions and Android PCM/pixel/schema scenarios. Runtime pending exact-head final batch CI. No AI model activation, crossfade or release claim.
+- Added bounded asynchronous thumbnail loading, keyboard scrub, host assertions, real interactive UI, v3 process-death and Android PCM/pixel/schema scenarios with mandatory evidence parser. Runtime pending exact-head final batch CI. No AI model activation, crossfade or release claim.
 
 ## Beta17 repair CI activation — 2026-11-26
 - Owner-authorized push CI on Beta17 QA and Beta18 QA branches only; manual dispatch retained, concurrency per ref without cancelling active runs.

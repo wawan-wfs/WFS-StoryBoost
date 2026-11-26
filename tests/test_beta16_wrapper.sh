@@ -13,7 +13,7 @@ cat > bin/adb <<'MOCK'
 if [[ "$*" == 'shell getprop ro.build.version.sdk' ]]; then echo "${MOCK_API:-29}"
 elif [[ "$*" == 'shell getprop ro.product.cpu.abi' ]]; then echo x86_64
 elif [[ "$1" == logcat ]]; then
-  printf '%s\n' 'I/WfsTimelinePreviewQA: renderMs=300 bytes=4096 durationMs=2000' 'I/WfsTimelinePreviewQA: readyMs=430 durationMs=2001' 'I/WfsTimelinePreviewQA: seekSettledMs=600' 'I/WfsTimelinePreviewQA: seekSettledMs=1400'
+  printf '%s\n' 'I/WfsTimelinePreviewQA: renderMs=300 bytes=4096 durationMs=2000' 'I/WfsTimelinePreviewQA: readyMs=430 durationMs=2001' 'I/WfsTimelinePreviewQA: seekSettledMs=600' 'I/WfsTimelinePreviewQA: seekSettledMs=1400' 'I/WfsTimelinePreviewQA: soundtrackRms=0.05 gapRms=0.0 dip=verified' 'I/WfsTimelinePreviewQA: soundtrackRms=0.05 gapRms=0.0 dip=verified'
   exec sleep 300
 else exit 2
 fi
@@ -25,7 +25,7 @@ set -e
 out=app/build/outputs/androidTest-results/connected
 mkdir -p "$out"
 cat > "$out/TEST-fixture.xml" <<'XML'
-<testsuite><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustedRepeatedClipRendersColorAndMute"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustmentPanelStagesCancelApplyAndReset"/><testcase classname="com.wfs.storyboost.TimelineAdjustmentsQaTest" name="legacySchemaReadOnlyAndV2RoundTrip"/></testsuite>
+<testsuite><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePreviewUsesRenderedCaptionAndCutsAndRemovesPrivateFileAfterRecreation"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelinePrivatePreviewRejectsDeletedSourceAndCanCancelBeforeCompletion"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustedRepeatedClipRendersColorAndMute"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineAdjustmentPanelStagesCancelApplyAndReset"/><testcase classname="com.wfs.storyboost.TimelineAdjustmentsQaTest" name="legacySchemaReadOnlyAndV2RoundTrip"/><testcase classname="com.wfs.storyboost.TimelineAdjustmentsQaTest" name="soundtrackAndFadeV3RoundTrip"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineSoundtrackAndDipRenderRealMedia"/><testcase classname="com.wfs.storyboost.VideoMediaQaTest" name="timelineInteractiveSplitAndSoundtrackPanel"/></testsuite>
 XML
 if [[ "${MOCK_GRADLE:-ok}" == skip ]]; then sed -i 's@<testcase @<testcase @;s@Recreation"/>@Recreation"><skipped/></testcase>@' "$out/TEST-fixture.xml"; fi
 MOCK

@@ -19,13 +19,14 @@ class EvidenceTest(unittest.TestCase):
         self.commit = "a" * 40
         self.metrics = "\n".join("I/WfsTimelinePreviewQA: " + s for s in (
             "renderMs=300 bytes=4096 durationMs=2000",
-            "readyMs=430 durationMs=2001", "seekSettledMs=600", "seekSettledMs=1400"))
+            "readyMs=430 durationMs=2001", "seekSettledMs=600", "seekSettledMs=1400",
+            "soundtrackRms=0.05 gapRms=0.0 dip=verified", "soundtrackRms=0.05 gapRms=0.0 dip=verified"))
         self.log.write_text(self.metrics)
         self.write_xml()
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
-        cases = [f'<testcase classname="{qa.CLASS if n != "legacySchemaReadOnlyAndV2RoundTrip" else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
-                 for n, tag in zip(qa.REQUIRED, (first, second, "", "", ""))]
+        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
+                 for n, tag in zip(qa.REQUIRED, (first, second) + ("",)*(len(qa.REQUIRED)-2))]
         if omit:
             cases.pop()
         if duplicate:
@@ -99,6 +100,16 @@ class EvidenceTest(unittest.TestCase):
     def test_missing_cut_side(self):
         self.log.write_text(self.metrics.replace("seekSettledMs=1400", "seekSettledMs=800"))
         with self.assertRaisesRegex(ValueError, "both sides"):
+            self.check()
+
+    def test_missing_soundtrack(self):
+        self.log.write_text(self.metrics.replace("soundtrackRms=", "unknown="))
+        with self.assertRaisesRegex(ValueError, "soundtrack"):
+            self.check()
+
+    def test_soundtrack_leak(self):
+        self.log.write_text(self.metrics.replace("gapRms=0.0", "gapRms=0.03"))
+        with self.assertRaisesRegex(ValueError, "soundtrack"):
             self.check()
 
     def test_wrong_api(self):

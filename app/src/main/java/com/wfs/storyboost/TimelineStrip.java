@@ -9,6 +9,16 @@ import java.util.Locale;
 import java.util.function.IntConsumer;
 import java.util.function.LongConsumer;
 import android.widget.SeekBar;
+import android.widget.ImageView;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
+import android.net.Uri;
+import android.util.LruCache;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Future;
+import java.util.ArrayList;
 
 /** Native, accessible sequence overview. Width is bounded for very short/long clips. */
 final class TimelineStrip extends LinearLayout {
@@ -24,6 +34,44 @@ final class TimelineStrip extends LinearLayout {
     private int currentSelection=-1,zoom=1;
     private long positionMs;
     private boolean dragging;
+    private boolean closed;
+    private int thumbnailGeneration;
+    private final LruCache<String,Bitmap> thumbnails=new LruCache<String,Bitmap>(2*1024*1024){
+        @Override protected int sizeOf(String key,Bitmap bitmap){return bitmap.getAllocationByteCount();}
+    };
+    private final ThreadPoolExecutor loader=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>());
+    private final ArrayList<Future<?>> pending=new ArrayList<>();
+    private void cancelThumbnails(){
+        thumbnailGeneration++;
+        for(Future<?> task:pending)task.cancel(true);
+        pending.clear();loader.purge();
+    }
+    void close(){
+        closed=true;cancelThumbnails();loader.shutdownNow();thumbnails.evictAll();
+    }
+    private void requestThumbnail(TimelineProject.Clip clip,ImageView target){
+        if(closed)return;
+        final int generation=thumbnailGeneration;
+        final Context app=getContext().getApplicationContext();
+        final String key=clip.uri+"#"+clip.in+"#"+clip.out;
+        pending.add(loader.submit(()->{
+            Uri uri=Uri.parse(clip.uri);
+            if(Thread.currentThread().isInterrupted()||!SourceAccess.canRead(app,uri))return;
+            Bitmap bitmap=thumbnails.get(key);
+            if(bitmap==null){
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(app,uri);
+                    bitmap=reader.getScaledFrameAtTime((clip.in+(clip.length()/2))*1000L,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,160,90);
+                    if(bitmap!=null&&!Thread.currentThread().isInterrupted())thumbnails.put(key,bitmap);
+                }catch(Exception|OutOfMemoryError unavailable){return;}
+            }
+            final Bitmap result=bitmap;
+            if(result!=null&&!Thread.currentThread().isInterrupted())target.post(()->{
+                if(!closed&&generation==thumbnailGeneration&&target.isAttachedToWindow())target.setImageBitmap(result);
+            });
+        }));
+    }
     TimelineStrip(Context context,IntConsumer select,LongConsumer seek){
         super(context);this.select=select;setOrientation(VERTICAL);
         setPadding(dp(12),dp(12),dp(12),dp(12));
@@ -36,7 +84,7 @@ final class TimelineStrip extends LinearLayout {
         scrub.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onStartTrackingTouch(SeekBar bar){dragging=true;}
             public void onProgressChanged(SeekBar bar,int progress,boolean user){
-                if(user){positionMs=TimelineNavigation.fromProgress(progress,current.duration());showPosition();}
+                if(user){positionMs=TimelineNavigation.fromProgress(progress,current.duration());showPosition();if(!dragging)seek.accept(positionMs);}
             }
             public void onStopTrackingTouch(SeekBar bar){dragging=false;seek.accept(positionMs);}
         });
@@ -55,7 +103,7 @@ final class TimelineStrip extends LinearLayout {
     private int dp(int n){return StudioUi.dp(getContext(),n);}
     private static String time(long ms){return String.format(Locale.ROOT,"%02d:%02d.%03d",ms/60000,ms/1000%60,ms%1000);}
     void bind(TimelineProject model,int selected){
-        current=model;currentSelection=selected;track.removeAllViews();
+        cancelThumbnails();current=model;currentSelection=selected;track.removeAllViews();
         scrub.setEnabled(!model.clips.isEmpty());
         audioLane.setText(model.audio==null?"AUDIO • belum ada soundtrack":"AUDIO • "+time(model.audio.start)+" – "+time(model.audio.end())+" • "+model.audio.volume+"%");
         captionLane.setText(model.caption==null?"CAPTION • kosong":"CAPTION • "+time(model.caption.in)+" – "+time(model.caption.out));
@@ -73,6 +121,13 @@ final class TimelineStrip extends LinearLayout {
             tile.setContentDescription("Pilih segmen timeline "+(i+1)+", "+time(start)+" sampai "+time(start+clip.length()));
             tile.setSelected(i==selected);
             tile.setOnClickListener(v->select.accept(index));
+            ImageView thumb=new ImageView(getContext());
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackground(StudioUi.solid(getContext(),StudioUi.INNER,8));
+            thumb.setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);
+            thumb.setOnClickListener(v->select.accept(index));
+            cell.addView(thumb,new LayoutParams(-1,dp(56)));
+            requestThumbnail(clip,thumb);
             cell.addView(tile,new LayoutParams(-1,dp(48)));
             cell.addView(StudioUi.text(getContext(),time(clip.length()),10,StudioUi.MUTED,false));
             LayoutParams p=new LayoutParams(dp(width),-2);p.rightMargin=dp(6);track.addView(cell,p);

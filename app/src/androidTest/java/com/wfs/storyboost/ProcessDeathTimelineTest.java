@@ -89,6 +89,7 @@ public final class ProcessDeathTimelineTest {
         TimelineProject edited=initial.append(TimelineProject.Clip.create(second.toString(),
                 MediaProbe.duration(app(),second),500,1600)).caption(new TimelineProject.Caption(
                 "Caption rentang",400,1750,0xffffd786)).adjust(1,new ClipAdjustments(6,30,-20,15,true));
+        edited=edited.soundtrack(new TimelineProject.Audio(second.toString(),MediaProbe.duration(app(),second),500,1000,250,40)).fade(150);
         String firstId=edited.clips.get(0).id,secondId=edited.clips.get(1).id;
         assertTrue(TimelineDraftStore.save(app(),edited));
         ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen());
@@ -141,6 +142,9 @@ public final class ProcessDeathTimelineTest {
             assertEquals(500,saved.clips.get(0).in);assertEquals(1600,saved.clips.get(0).out);
             assertEquals(125,saved.clips.get(1).in);assertEquals(1500,saved.clips.get(1).out);
             assertEquals(400,saved.caption.in);assertEquals(1750,saved.caption.out);
+            assertNotNull(saved.audio);assertEquals(second.toString(),saved.audio.uri);
+            assertEquals(500,saved.audio.in);assertEquals(1000,saved.audio.out);
+            assertEquals(250,saved.audio.start);assertEquals(40,saved.audio.volume);assertEquals(150,saved.fadeMs);
             assertEquals(p.getString("shaA",""),sha(first));assertEquals(p.getString("shaB",""),sha(second));
             assertEquals("Migrasi",StudioDraftStore.load(app(),first).options.caption);
             try(ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen())){
