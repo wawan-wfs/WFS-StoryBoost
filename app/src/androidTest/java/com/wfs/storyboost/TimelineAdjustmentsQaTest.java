@@ -16,6 +16,23 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void soundtrackAndFadeV3RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/a",2000,0,2000))
+                    .soundtrack(new TimelineProject.Audio("content://qa/sound",3000,250,1250,500,45)).fade(300);
+            assertTrue(TimelineDraftStore.save(ctx,project));
+            String raw=prefs.getString("draft",null);assertEquals(3,new JSONObject(raw).getInt("version"));
+            TimelineProject loaded=TimelineDraftStore.load(ctx);assertNotNull(loaded);assertNotNull(loaded.audio);
+            assertEquals(500,loaded.audio.start);assertEquals(250,loaded.audio.in);assertEquals(1250,loaded.audio.out);
+            assertEquals(45,loaded.audio.volume);assertEquals(300,loaded.fadeMs);
+            for(String bad:new String[]{raw.replace("\"volume\":45","\"volume\":101"),
+                    raw.replace("\"startMs\":500","\"startMs\":500.5"),raw.replace("\"fadeMs\":300","\"fadeMs\":1001")}){
+                assertTrue(prefs.edit().putString("draft",bad).commit());assertNull(TimelineDraftStore.load(ctx));
+            }
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void legacySchemaReadOnlyAndV2RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);

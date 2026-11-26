@@ -599,6 +599,39 @@ public class VideoMediaQaTest {
         assertArrayEquals(sha,hashSource(kept));
     }
 
+    @Test(timeout=300000)
+    public void timelineSoundtrackAndDipRenderRealMedia()throws Exception{
+        Uri source=importFixture("qa-timeline-b.mp4");
+        byte[] hash=hashSource(source);
+        ClipAdjustments mute=new ClipAdjustments(ColorLooks.ORIGINAL,0,0,0,true);
+        TimelineProject draft=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+                .adjust(0,mute).adjust(1,mute)
+                .soundtrack(new TimelineProject.Audio(source.toString(),2000,500,1500,1000,50)).fade(300);
+        File output=renderAdjusted(draft,false),preview=null;
+        try{
+            preview=renderAdjusted(draft,true);
+            for(File file:new File[]{output,preview}){
+                MediaProbe.Info info=MediaProbe.inspect(file);assertTrue(info.video&&info.audio);
+                assertTrue(Math.abs(info.durationMs-2000)<=250);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file);
+                assertTrue("Independent audio not audible",pcm.audibleRms()>0.015);
+                assertTrue("Soundtrack began early",pcm.mutedRms()<pcm.audibleRms()*0.1);
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+                try(MediaMetadataRetriever retriever=new MediaMetadataRetriever()){
+                    retriever.setDataSource(file.getAbsolutePath());
+                    android.graphics.Bitmap normal=retriever.getFrameAtTime(350000,MediaMetadataRetriever.OPTION_CLOSEST);
+                    android.graphics.Bitmap dip=retriever.getFrameAtTime(1000000,MediaMetadataRetriever.OPTION_CLOSEST);
+                    assertNotNull(normal);assertNotNull(dip);
+                    try{assertTrue("Cut must visibly dip",((dip.getPixel(120,120)>>16)&255)+15<((normal.getPixel(120,120)>>16)&255));}
+                    finally{normal.recycle();dip.recycle();}
+                }
+                android.util.Log.i("WfsTimelinePreviewQA","soundtrackRms="+pcm.audibleRms()+" gapRms="+pcm.mutedRms()+" dip=verified");
+            }
+            assertArrayEquals(hash,hashSource(source));
+        }finally{output.delete();if(preview!=null)preview.delete();}
+    }
     @Test(timeout=450000)
     public void timelineAdjustedRepeatedClipRendersColorAndMute()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");

@@ -48,18 +48,45 @@ final class TimelineProject {
         boolean atUs(long timeUs){return timeUs>=in*1000&&timeUs<out*1000;}
     }
 
+    /** One independently trimmed soundtrack anchored to absolute timeline time. */
+    static final class Audio {
+        final String uri;
+        final long duration,in,out,start;
+        final int volume;
+        Audio(String uri,long duration,long in,long out,long start,int volume){
+            if(uri==null||!uri.startsWith("content://")||uri.length()>4096||
+                    duration<=0||duration>MAX_SOURCE_MS||in<0||out<=in||out>duration||
+                    start<0||start>MAX_SOURCE_MS*MAX_CLIPS||volume<1||volume>100)
+                throw new IllegalArgumentException("Rentang atau volume audio tidak valid.");
+            this.uri=uri;this.duration=duration;this.in=in;this.out=out;this.start=start;this.volume=volume;
+        }
+        long length(){return out-in;}
+        long end(){return start+length();}
+        Audio fit(long total){
+            if(start>=total)return null;
+            return end()<=total?this:new Audio(uri,duration,in,in+total-start,start,volume);
+        }
+    }
+    final Audio audio;
+    /** Fade-through-black on internal cuts; duration is the maximum per side. */
+    final int fadeMs;
     final List<Clip> clips;
     final Caption caption;
     final int quality;
 
     TimelineProject(List<Clip> items,Caption caption,int quality){
+        this(items,caption,quality,null,0);
+    }
+    TimelineProject(List<Clip> items,Caption caption,int quality,Audio audio,int fadeMs){
+        if(fadeMs<0||fadeMs>1000)throw new IllegalArgumentException("Fade harus 0–1000 ms.");
         if(items.size()>MAX_CLIPS)throw new IllegalArgumentException("Maksimal 10 klip.");
         HashSet<String> ids=new HashSet<>();
         for(Clip c:items)if(!ids.add(c.id))throw new IllegalArgumentException("ID klip duplikat.");
         if(quality<0||quality>2)throw new IllegalArgumentException("Kualitas tidak valid.");
         clips=Collections.unmodifiableList(new ArrayList<>(items));this.quality=quality;
         if(caption!=null&&caption.out>duration())throw new IllegalArgumentException("Caption melebihi durasi timeline.");
-        this.caption=caption;
+        if(audio!=null&&audio.end()>duration())throw new IllegalArgumentException("Audio melebihi timeline.");
+        this.caption=caption;this.audio=audio;this.fadeMs=fadeMs;
     }
     static TimelineProject empty(){return new TimelineProject(Collections.emptyList(),null,1);}
     long duration(){long end=0;for(Clip c:clips)end+=c.length();return end;}
@@ -78,7 +105,7 @@ final class TimelineProject {
         Caption next=caption;
         if(next!=null&&next.in>=end)next=null;
         else if(next!=null&&next.out>end)next=new Caption(next.text,next.in,end,next.color);
-        return new TimelineProject(items,next,quality);
+        return new TimelineProject(items,next,quality,audio==null?null:audio.fit(end),fadeMs);
     }
     TimelineProject append(Clip clip){List<Clip> next=new ArrayList<>(clips);next.add(clip);return withClips(next);}
     TimelineProject remove(int index){List<Clip> next=new ArrayList<>(clips);next.remove(index);return withClips(next);}
@@ -99,8 +126,37 @@ final class TimelineProject {
         if(clip==edited)return this;
         List<Clip> items=new ArrayList<>(clips);items.set(index,edited);return withClips(items);
     }
-    TimelineProject caption(Caption c){return new TimelineProject(clips,c,quality);}
-    TimelineProject quality(int mode){return mode==quality?this:new TimelineProject(clips,caption,mode);}
+    TimelineProject caption(Caption c){return new TimelineProject(clips,c,quality,audio,fadeMs);}
+    TimelineProject quality(int mode){return mode==quality?this:new TimelineProject(clips,caption,mode,audio,fadeMs);}
+    TimelineProject soundtrack(Audio next){return next==audio?this:new TimelineProject(clips,caption,quality,next,fadeMs);}
+    TimelineProject fade(int ms){return ms==fadeMs?this:new TimelineProject(clips,caption,quality,audio,ms);}
+    /** Split is one immutable edit; original ID stays with the left segment. */
+    TimelineProject split(int index,long sourceMs){
+        Clip clip=clips.get(index);
+        if(sourceMs<=clip.in||sourceMs>=clip.out)throw new IllegalArgumentException("Split harus di dalam klip.");
+        List<Clip> next=new ArrayList<>(clips);
+        next.set(index,clip.trim(clip.in,sourceMs));
+        next.add(index+1,new Clip(UUID.randomUUID().toString(),clip.uri,clip.duration,sourceMs,clip.out,clip.adjustments));
+        return withClips(next);
+    }
+    TimelineProject duplicate(int index){
+        Clip clip=clips.get(index);List<Clip> next=new ArrayList<>(clips);
+        next.add(index+1,new Clip(UUID.randomUUID().toString(),clip.uri,clip.duration,clip.in,clip.out,clip.adjustments));
+        return withClips(next);
+    }
+    /** Dip to black without shortening or overlapping clips, with short-clip clamping. */
+    float fadeGain(long timeUs){
+        if(fadeMs==0||clips.size()<2)return 1f;
+        long boundary=0;
+        float gain=1f;
+        for(int i=0;i<clips.size()-1;i++){
+            boundary+=clips.get(i).length()*1000L;
+            long width=Math.min(fadeMs*1000L,Math.min(clips.get(i).length(),clips.get(i+1).length())*500L);
+            long distance=Math.abs(timeUs-boundary);
+            if(width>0&&distance<width)gain=Math.min(gain,(float)distance/width);
+        }
+        return gain;
+    }
 
     /** Undo/redo is session-local; every resulting approved snapshot is saved by the UI. */
     static final class History {

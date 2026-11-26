@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta18 integrated candidate
+
+Beta17 repair accepted run 45758250805 4/4. Beta18 integrated implementation is pending exact-head Android acceptance; roadmap remains 23/32, no CapCut parity claim. See BETA18_QA.md and BETA18_AI_ACCEPTANCE.md.
+
 ## Beta17 repair CI activation — 2026-11-26
 
 Owner-authorized scoped automatic CI (Beta17 QA and Beta18 QA branches only), manual dispatch retained, per-ref concurrency, stable signing manual-only, no deployment. The Android repair is still awaiting exact-head acceptance; 23/32 unchanged.

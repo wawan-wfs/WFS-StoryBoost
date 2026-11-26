@@ -38,7 +38,8 @@ import java.util.concurrent.Executors;
  */
 public final class StudioMergeActivity extends Activity {
     static final String EXTRA_TIMELINE="one_track_timeline",EXTRA_MIGRATE_URI="timeline_migrate_uri";
-    private static final int PICK_CLIPS=901;
+    private static final int PICK_CLIPS=901,PICK_AUDIO=902;
+    private long previewGeneration;
     private final ArrayList<Uri> clips=new ArrayList<>();
     private final ExecutorService thumbs=Executors.newSingleThreadExecutor();
     private final Handler main=new Handler(Looper.getMainLooper());
@@ -98,7 +99,7 @@ public final class StudioMergeActivity extends Activity {
         header.addView(back,new LinearLayout.LayoutParams(d(44),d(45)));
         back.setOnClickListener(v->finish());
         LinearLayout title=col();title.addView(txt(timelineMode?"Timeline Studio":"Video Merge Studio",19,StudioUi.TEXT,true));
-        title.addView(txt(timelineMode?"SATU TRACK  •  DRAF OTOMATIS":"MULTI-CLIP  •  REORDER & JOIN",10,StudioUi.CYAN,true));
+        title.addView(txt(timelineMode?"VIDEO + AUDIO  •  DRAF OTOMATIS":"MULTI-CLIP  •  REORDER & JOIN",10,StudioUi.CYAN,true));
         LinearLayout.LayoutParams l=new LinearLayout.LayoutParams(0,-2,1f);l.leftMargin=d(9);
         header.addView(title,l);
         root.addView(header);
@@ -144,7 +145,7 @@ public final class StudioMergeActivity extends Activity {
                 renderedPreview.open(timeline.current());
             });
             gap(body,10);
-            timelineStrip=new TimelineStrip(this,this::select);body.addView(timelineStrip);gap(body,10);
+            timelineStrip=new TimelineStrip(this,this::select,this::seekTimeline);body.addView(timelineStrip);gap(body,10);
             LinearLayout historyBar=row();
             undoTimeline=timelineButton(historyBar,"Undo",()->historyStep(false));
             redoTimeline=timelineButton(historyBar,"Redo",()->historyStep(true));
@@ -154,12 +155,21 @@ public final class StudioMergeActivity extends Activity {
             timelineButton(editBar,"Trim klip",this::editTrim);
             timelineButton(editBar,"Caption waktu",this::editTimedCaption);
             body.addView(editBar);gap(body,7);
+            LinearLayout cutBar=row();
+            timelineButton(cutBar,"Split",this::splitAtPlayhead);
+            timelineButton(cutBar,"Duplikat",this::duplicateClip);
+            timelineButton(cutBar,"Fade",this::editFade);
+            body.addView(cutBar);gap(body,7);
+            LinearLayout audioBar=row();
+            timelineButton(audioBar,"＋ Audio",this::pickAudio);
+            timelineButton(audioBar,"Edit audio",this::editSoundtrack);
+            body.addView(audioBar);gap(body,7);
             adjustTimeline=button("Color Look • Adjust • Audio",true);
             adjustTimeline.setOnClickListener(v->editClipAdjustments());
             body.addView(adjustTimeline,new LinearLayout.LayoutParams(-1,d(48)));gap(body,11);
         }
         clipList=col();body.addView(clipList);
-        info=txt("Klip akan digabung sesuai urutan. Belum ada transisi silang.",11,StudioUi.MUTED,false);
+        info=txt("Klip akan digabung sesuai urutan. Fade tidak mengubah durasi.",11,StudioUi.MUTED,false);
         gap(body,10);body.addView(info);
 
         LinearLayout qualityBar=row();qualityBar.setPadding(d(9),d(8),d(9),d(8));
@@ -210,7 +220,9 @@ public final class StudioMergeActivity extends Activity {
     }
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
-        if(request!=PICK_CLIPS||result!=RESULT_OK||data==null)return;
+        if(result!=RESULT_OK||data==null)return;
+        if(request==PICK_AUDIO&&timelineMode){if(data.getData()!=null)importSoundtrack(data.getData());return;}
+        if(request!=PICK_CLIPS)return;
         ArrayList<Uri> incoming=new ArrayList<>();
         if(data.getClipData()!=null){
             for(int i=0;i<data.getClipData().getItemCount();i++)
@@ -227,20 +239,21 @@ public final class StudioMergeActivity extends Activity {
         if(selected<0&&!clips.isEmpty())select(0);
         renderList();
     }
-    private void select(int index){
-        if(index<0||index>=clips.size())return;
+    private void select(int index){selectAt(index,timelineMode&&index>=0&&index<clips.size()?timeline.current().clips.get(index).in:250);}
+    private void selectAt(int index,long position){
+        if(index<0||index>=clips.size()||(timelineMode&&working))return;
+        final long generation=++previewGeneration;
         selected=index;
         preview.stopPlayback();
         trimPlayer=null;
         Uri uri=clips.get(index);
-        long position=timelineMode?timeline.current().clips.get(index).in:250;
         if(timelineMode&&!SourceAccess.canRead(this,uri)){
             toast("Izin baca klip hilang. Impor ulang atau hapus klip untuk melanjutkan.");
             renderList();return;
         }
         final boolean mute=timelineMode&&timeline.current().clips.get(index).adjustments.mute;
         preview.setOnPreparedListener(player->{
-            if(selected!=index||destroyed)return;
+            if(selected!=index||destroyed||previewGeneration!=generation)return;
             if(timelineMode){
                 trimPlayer=player;
                 player.setVolume(mute?0f:1f,mute?0f:1f);
@@ -249,6 +262,7 @@ public final class StudioMergeActivity extends Activity {
         });
         preview.setVideoURI(uri);
         renderList();
+        if(timelineMode)timelineStrip.position(timeline.current().startOf(index)+position-timeline.current().clips.get(index).in,timeline.current().duration());
     }
     private String name(Uri uri){
         try(Cursor c=getContentResolver().query(uri,
@@ -346,6 +360,7 @@ public final class StudioMergeActivity extends Activity {
         final VideoMergeEngine worker=new VideoMergeEngine();
         engine=worker;
         final ArrayList<Uri> sources=new ArrayList<>(clips);
+        if(timelineMode&&timeline.current().audio!=null)sources.add(Uri.parse(timeline.current().audio.uri));
         LinearLayout progressCard=StudioUi.card(this,17);
         progressCard.addView(txt("Sedang menggabungkan "+clips.size()+" klip",17,StudioUi.TEXT,true));
         gap(progressCard,12);
@@ -495,6 +510,102 @@ public final class StudioMergeActivity extends Activity {
         timeline.apply(next);
         bindTimeline(id);return true;
     }
+    private void seekTimeline(long globalMs){
+        if(!canEditTimeline())return;
+        TimelineProject project=timeline.current();
+        int index=project.clipIndexAt(globalMs);
+        if(index<0)return;
+        long sourceMs=TimelineNavigation.sourcePosition(project,index,globalMs);
+        preview.pause();
+        if(index==selected&&trimPlayer!=null){trimPlayer.seekTo(sourceMs,android.media.MediaPlayer.SEEK_CLOSEST);}
+        else selectAt(index,sourceMs);
+        timelineStrip.position(globalMs,project.duration());
+    }
+    private void splitAtPlayhead(){
+        if(!canEditTimeline()||selected<0)return;
+        TimelineProject p=timeline.current();
+        long position=timelineStrip.currentPosition();
+        if(p.clipIndexAt(position)!=selected){toast("Pilih posisi di dalam klip.");return;}
+        try{editTimeline(p.split(selected,TimelineNavigation.sourcePosition(p,selected,position)));}
+        catch(IllegalArgumentException ex){toast(ex.getMessage());}
+    }
+    private void duplicateClip(){
+        if(!canEditTimeline()||selected<0)return;
+        try{editTimeline(timeline.current().duplicate(selected));}
+        catch(IllegalArgumentException ex){toast(ex.getMessage());}
+    }
+    private void editFade(){
+        if(!canEditTimeline()||clips.size()<2){toast("Tambahkan minimal dua klip.");return;}
+        final TimelineProject prior=timeline.current();
+        String[] labels={"Cut langsung","Fade 150 ms","Fade 300 ms","Fade 500 ms","Fade 1000 ms"};
+        int[] choices={0,150,300,500,1000};int checked=0;
+        for(int i=0;i<choices.length;i++)if(choices[i]==prior.fadeMs)checked=i;
+        final int[] pending={checked};
+        new AlertDialog.Builder(this).setTitle("Transisi dip-to-black")
+                .setSingleChoiceItems(labels,checked,(d,i)->pending[0]=i)
+                .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(d,w)->{
+                    if(canEditTimeline()&&timeline.current()==prior)editTimeline(prior.fade(choices[pending[0]]));
+                }).show();
+    }
+    private void pickAudio(){
+        if(!canEditTimeline()||clips.isEmpty()){toast("Tambahkan video sebelum soundtrack.");return;}
+        Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try{startActivityForResult(pick,PICK_AUDIO);}catch(Exception ex){toast("Pemilih audio tidak tersedia.");}
+    }
+    private void importSoundtrack(Uri uri){
+        if(!canEditTimeline()||clips.isEmpty())return;
+        TimelineProject prior=timeline.current();importing=true;
+        try{
+            if(!TimelineDraftStore.hasReadGrant(this,uri))
+                getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }catch(Exception ex){importing=false;toast("Izin audio tidak dapat disimpan.");return;}
+        thumbs.execute(()->{
+            TimelineProject.Audio candidate=null;
+            try{
+                SourceAccess.requireReadable(this,uri);
+                MediaProbe.Info info=MediaProbe.inspect(this,uri);
+                if(info.audio&&info.audioDurationMs>0&&info.audioDurationMs<=TimelineProject.MAX_SOURCE_MS)
+                    candidate=new TimelineProject.Audio(uri.toString(),info.audioDurationMs,0,
+                            Math.min(info.audioDurationMs,prior.duration()),0,50);
+            }catch(Exception ignored){}
+            final TimelineProject.Audio result=candidate;
+            runOnUiThread(()->{
+                importing=false;if(destroyed||timeline.current()!=prior)return;
+                if(result==null){toast("Audio tidak valid atau durasi tidak tersedia.");return;}
+                showSoundtrack(prior,result);
+            });
+        });
+    }
+    private void editSoundtrack(){
+        if(!canEditTimeline())return;
+        TimelineProject prior=timeline.current();
+        if(prior.audio==null){pickAudio();return;}
+        showSoundtrack(prior,prior.audio);
+    }
+    private void showSoundtrack(TimelineProject prior,TimelineProject.Audio audio){
+        preview.pause();LinearLayout form=StudioUi.card(this,16);
+        form.addView(txt("Audio independen • hasil mix tersedia di Preview Timeline",12,StudioUi.MUTED,false));
+        EditText in=numberField(form,"Mulai sumber audio (ms)",audio.in);
+        EditText out=numberField(form,"Akhir sumber audio (ms)",audio.out);
+        EditText start=numberField(form,"Posisi di timeline (ms)",audio.start);
+        EditText volume=numberField(form,"Volume audio (1–100%)",audio.volume);
+        ScrollView scroll=new ScrollView(this);scroll.addView(form);
+        AlertDialog panel=new AlertDialog.Builder(this).setTitle("Soundtrack").setView(scroll)
+                .setNegativeButton("Batal",null).setNeutralButton("Hapus",null).setPositiveButton("Terapkan",null).show();
+        panel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(!canEditTimeline()||timeline.current()!=prior)return;
+            try{
+                TimelineProject.Audio next=new TimelineProject.Audio(audio.uri,audio.duration,
+                        Long.parseLong(in.getText().toString()),Long.parseLong(out.getText().toString()),
+                        Long.parseLong(start.getText().toString()),Integer.parseInt(volume.getText().toString()));
+                if(editTimeline(prior.soundtrack(next)))panel.dismiss();
+            }catch(IllegalArgumentException ex){toast("Periksa rentang dan volume. "+ex.getMessage());}
+        });
+        panel.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{
+            if(canEditTimeline()&&timeline.current()==prior&&editTimeline(prior.soundtrack(null)))panel.dismiss();
+        });
+    }
     private void editClipAdjustments(){
         if(!canEditTimeline()||selected<0||selected>=timeline.current().clips.size())return;
         final String id=selectedId();final int index=selected;
@@ -592,6 +703,7 @@ public final class StudioMergeActivity extends Activity {
                 if(preview.getCurrentPosition()>=segment.out){
                     preview.pause();
                     if(trimPlayer!=null)trimPlayer.seekTo(segment.in,android.media.MediaPlayer.SEEK_CLOSEST);
+                    if(timelineStrip!=null)timelineStrip.position(timeline.current().startOf(selected),timeline.current().duration());
                 }
             }
             main.postDelayed(this,100);

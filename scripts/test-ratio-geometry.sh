@@ -22,7 +22,9 @@ javac -d "$TMP" "$ROOT/app/src/main/java/com/wfs/storyboost/AspectRatioProfile.j
   "$ROOT/app/src/main/java/com/wfs/storyboost/ClipAdjustments.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/TimelineProject.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/TimelinePreviewCache.java" \
-  "$ROOT/tests/AspectRatioProfileTest.java" "$ROOT/tests/TimelineProjectTest.java" "$ROOT/tests/TimelinePreviewCacheTest.java"
+  "$ROOT/app/src/main/java/com/wfs/storyboost/TimelineNavigation.java" \
+  "$ROOT/tests/AspectRatioProfileTest.java" "$ROOT/tests/TimelineProjectTest.java" "$ROOT/tests/TimelinePreviewCacheTest.java" "$ROOT/tests/TimelineBatchTest.java"
 java -cp "$TMP" com.wfs.storyboost.AspectRatioProfileTest
 java -cp "$TMP" com.wfs.storyboost.TimelineProjectTest
 java -cp "$TMP" com.wfs.storyboost.TimelinePreviewCacheTest
+java -cp "$TMP" com.wfs.storyboost.TimelineBatchTest

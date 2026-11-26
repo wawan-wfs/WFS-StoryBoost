@@ -14,7 +14,7 @@ import java.util.Collections;
 /** One private, versioned timeline slot. Legacy single-source drafts are independent. */
 final class TimelineDraftStore {
     private static final String PREFS="one-track-timeline",KEY="draft";
-    private static final int VERSION=2,MAX_CHARS=70000;
+    private static final int VERSION=3,MAX_CHARS=70000;
     private TimelineDraftStore(){}
     private static SharedPreferences prefs(Context c){return c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);}
 
@@ -25,14 +25,14 @@ final class TimelineDraftStore {
             if(raw==null||raw.length()>MAX_CHARS)return null;
             JSONObject j=new JSONObject(raw);
             int version=strictInt(j,"version");
-            if(version!=1&&version!=VERSION)return null;
+            if(version<1||version>VERSION)return null;
             JSONArray entries=j.getJSONArray("clips");
             if(entries.length()>TimelineProject.MAX_CLIPS)return null;
             ArrayList<TimelineProject.Clip> clips=new ArrayList<>();
             for(int i=0;i<entries.length();i++){
                 JSONObject e=entries.getJSONObject(i);
                 ClipAdjustments edits=ClipAdjustments.NEUTRAL;
-                if(version==VERSION){
+                if(version>=2){
                     JSONObject a=e.getJSONObject("adjustments");
                     Object mute=a.get("mute");
                     if(!(mute instanceof Boolean))throw new JSONException("Invalid mute");
@@ -46,10 +46,24 @@ final class TimelineDraftStore {
             JSONObject cap=j.optJSONObject("caption");
             if(cap!=null)caption=new TimelineProject.Caption(cap.getString("text"),cap.getLong("inMs"),
                     cap.getLong("outMs"),cap.getInt("color"));
-            return new TimelineProject(clips,caption,j.getInt("quality"));
+            TimelineProject.Audio audio=null;int fade=0;
+            if(version==3){
+                fade=strictInt(j,"fadeMs");
+                if(j.has("audio")){
+                    JSONObject a=j.getJSONObject("audio");
+                    audio=new TimelineProject.Audio(a.getString("uri"),strictLong(a,"duration"),
+                            strictLong(a,"inMs"),strictLong(a,"outMs"),strictLong(a,"startMs"),strictInt(a,"volume"));
+                }
+            }
+            return new TimelineProject(clips,caption,strictInt(j,"quality"),audio,fade);
         }catch(JSONException|IllegalArgumentException|ClassCastException corrupt){return null;}
     }
 
+    private static long strictLong(JSONObject j,String key)throws JSONException{
+        Object value=j.get(key);
+        if(!(value instanceof Integer)&&!(value instanceof Long))throw new JSONException("Invalid long "+key);
+        return ((Number)value).longValue();
+    }
     private static int strictInt(JSONObject j,String key)throws JSONException{
         Object value=j.get(key);
         if(!(value instanceof Number))throw new JSONException("Invalid integer "+key);
@@ -68,8 +82,18 @@ final class TimelineDraftStore {
                         .put("adjustments",new JSONObject().put("look",clip.adjustments.look)
                                 .put("brightness",clip.adjustments.brightness).put("contrast",clip.adjustments.contrast)
                                 .put("saturation",clip.adjustments.saturation).put("mute",clip.adjustments.mute)));
-            JSONObject doc=new JSONObject().put("version",VERSION).put("clips",entries)
+            // Preserve v2 compatibility for projects without new soundtrack/fade data.
+            int schema=project.audio!=null||project.fadeMs!=0?VERSION:2;
+            JSONObject doc=new JSONObject().put("version",schema).put("clips",entries)
                     .put("quality",project.quality);
+            if(schema==3){
+                doc.put("fadeMs",project.fadeMs);
+                if(project.audio!=null){
+                    TimelineProject.Audio a=project.audio;
+                    doc.put("audio",new JSONObject().put("uri",a.uri).put("duration",a.duration)
+                            .put("inMs",a.in).put("outMs",a.out).put("startMs",a.start).put("volume",a.volume));
+                }
+            }
             if(project.caption!=null){
                 TimelineProject.Caption cap=project.caption;
                 doc.put("caption",new JSONObject().put("text",cap.text).put("inMs",cap.in)

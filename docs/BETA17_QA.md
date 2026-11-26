@@ -31,3 +31,7 @@ Native Cancel/Apply buttons retain framework IDs, use explicit accessibility des
 ## CI trigger authorization — 2026-11-26
 
 Owner explicitly enabled automated GitHub Actions for WFS StoryBoost development. Push CI is scoped to the exact Beta17 QA branch and qa/beta18-*; workflow_dispatch retained. Per-ref concurrency prevents overlapping active runs; running jobs are not cancelled, although GitHub may replace an older pending run. Stable signing is manual-only; no deployment, PR trigger, main push trigger or gate removal. This change does not prove the repair passes. Resolve the new exact HEAD and inspect the actual push run, or dispatch once if GitHub does not enqueue it.
+
+## Accepted Beta17 repair baseline
+
+Run 45758250805 at e27a8412ccaa449d801a0ab97e60faa8089181a0: all four jobs completed successfully (build, API35 install, API29 and API35 connected instrumented QA). Exact-head preview, timeline restart and external provider artifacts published for both APIs. The Beta18 candidate does not inherit these results automatically.

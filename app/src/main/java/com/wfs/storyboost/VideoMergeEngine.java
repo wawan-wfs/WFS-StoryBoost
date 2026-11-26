@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-/** Concatenate video clips in order using Media3 Composition. Not a crossfade editor. */
+/** Composition editor with optional independent soundtrack and non-overlap dip-to-black. */
 @SuppressWarnings("UnsafeOptInUsageError")
 public final class VideoMergeEngine {
     static final String PREVIEW_PREFIX=TimelinePreviewCache.PREFIX;
@@ -58,7 +58,7 @@ public final class VideoMergeEngine {
                         Presentation.createForWidthAndHeight(width,height,
                                 Presentation.LAYOUT_SCALE_TO_FIT))))
                 .build();
-        encode(context,sources,composition,-1,false,false,width,height,"wfs_join_",listener);
+        encode(context,sources,composition,-1,false,false,width,height,0,"wfs_join_",listener);
     }
 
     /** Timeline export uses trimmed clips and composition-global caption time. */
@@ -73,6 +73,7 @@ public final class VideoMergeEngine {
         ArrayList<Uri> sources=new ArrayList<>();
         ArrayList<EditedMediaItem> items=new ArrayList<>();
         boolean hasAudio=false,hasHdr=false;
+        float maxFps=0f;
         AspectRatioProfile.Size canvas;
         try{
             Uri first=Uri.parse(draft.clips.get(0).uri);
@@ -91,7 +92,7 @@ public final class VideoMergeEngine {
                 if(!input.video||duration<=0||clip.out>duration)
                     throw new IllegalArgumentException("Media atau trim klip "+(sources.size()+1)+" berubah.");
                 hasAudio|=clip.adjustments.keepsAudio(input.audio);
-                hasHdr|=input.isHdr();
+                hasHdr|=input.isHdr();maxFps=Math.max(maxFps,input.fps);
                 sources.add(uri);
                 MediaItem media=new MediaItem.Builder().setUri(uri)
                         .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
@@ -109,23 +110,60 @@ public final class VideoMergeEngine {
         }
         EditedMediaItemSequence sequence=hasAudio?EditedMediaItemSequence.withAudioAndVideoFrom(items)
                 :EditedMediaItemSequence.withVideoFrom(items);
-        Composition.Builder builder=new Composition.Builder(sequence);
+        ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();sequences.add(sequence);
+        if(draft.audio!=null){
+            TimelineProject.Audio audio=draft.audio;
+            Uri uri=Uri.parse(audio.uri);
+            try{
+                SourceAccess.requireReadable(context,uri);
+                MediaProbe.Info input=MediaProbe.inspect(context,uri);
+                if(!input.audio||input.audioDurationMs<audio.out)
+                    throw new IllegalArgumentException("Sumber soundtrack berubah atau tidak memiliki audio.");
+                sources.add(uri);
+                MediaItem media=new MediaItem.Builder().setUri(uri)
+                        .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder()
+                                .setStartPositionMs(audio.in).setEndPositionMs(audio.out).build()).build();
+                androidx.media3.common.audio.GainProcessor gain=new androidx.media3.common.audio.GainProcessor(
+                        new androidx.media3.common.audio.DefaultGainProvider.Builder(audio.volume/100f).build());
+                EditedMediaItem sound=new EditedMediaItem.Builder(media).setRemoveVideo(true)
+                        .setEffects(new Effects(Collections.singletonList(gain),Collections.emptyList())).build();
+                EditedMediaItemSequence.Builder lane=new EditedMediaItemSequence.Builder(
+                        Collections.singleton(androidx.media3.common.C.TRACK_TYPE_AUDIO));
+                if(audio.start>0)lane.addGap(audio.start*1000L);
+                lane.addItem(sound);
+                if(audio.end()<draft.duration())lane.addGap((draft.duration()-audio.end())*1000L);
+                sequences.add(lane.build());hasAudio=true;
+            }catch(Exception ex){throw new IllegalArgumentException("Soundtrack tidak dapat dibaca. "+ex.getMessage(),ex);}
+        }
+        Composition.Builder builder=new Composition.Builder(sequences);
+        List<Effect> globalEffects=new ArrayList<>();
+        if(draft.fadeMs>0&&draft.clips.size()>1){
+            globalEffects.add((androidx.media3.effect.RgbMatrix)(timeUs,useHdr)->{
+                float g=draft.fadeGain(timeUs);
+                return new float[]{g,0,0,0,0,g,0,0,0,0,g,0,0,0,0,1};
+            });
+        }
         if(hasHdr)builder.setHdrMode(Composition.HDR_MODE_TONE_MAP_HDR_TO_SDR_USING_OPEN_GL);
         if(draft.caption!=null){
             ExportOptions style=new ExportOptions(ColorLooks.ORIGINAL,AspectRatioProfile.ORIGINAL,
                     AspectRatioProfile.FIT,false).withCaption(draft.caption.text,draft.caption.color);
-            builder.setEffects(new Effects(Collections.emptyList(),Collections.singletonList(
-                    new OverlayEffect(Collections.singletonList(new VideoCaptionOverlay(style,draft.caption))))));
+            globalEffects.add(new OverlayEffect(Collections.singletonList(new VideoCaptionOverlay(style,draft.caption))));
         }
-        encode(context,sources,builder.build(),draft.duration(),hasAudio,hasHdr,canvas.width,canvas.height,filePrefix,listener);
+        if(!globalEffects.isEmpty())builder.setEffects(new Effects(Collections.emptyList(),globalEffects));
+        int bitrate=VideoBitrate.estimate(canvas.width,canvas.height,draft.quality,maxFps);
+        encode(context,sources,builder.build(),draft.duration(),hasAudio,hasHdr,canvas.width,canvas.height,bitrate,filePrefix,listener);
     }
 
     private void encode(Context context,List<Uri> sources,Composition composition,long expectedMs,
-                        boolean expectedAudio,boolean sourceHdr,int width,int height,String filePrefix,Listener listener){
+                        boolean expectedAudio,boolean sourceHdr,int width,int height,int bitrate,String filePrefix,Listener listener){
         cancelled=false;
         intermediate=new File(context.getCacheDir(),filePrefix+java.util.UUID.randomUUID()+".mp4");
         final File attemptFile=intermediate;
-        transformer=new Transformer.Builder(context)
+        Transformer.Builder encoder=new Transformer.Builder(context);
+        if(bitrate>0)encoder.setEncoderFactory(new androidx.media3.transformer.DefaultEncoderFactory.Builder(context)
+                .setRequestedVideoEncoderSettings(new androidx.media3.transformer.VideoEncoderSettings.Builder()
+                        .setBitrate(bitrate).setiFrameIntervalSeconds(2f).build()).build());
+        transformer=encoder
                 .setVideoMimeType(MimeTypes.VIDEO_H264)
                 .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 .addListener(new Transformer.Listener(){
