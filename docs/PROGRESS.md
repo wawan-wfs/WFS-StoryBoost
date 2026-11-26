@@ -4,7 +4,7 @@ This is a **feature roadmap coverage estimate** for the target v3.0, not a claim
 
 ## Beta18 integrated candidate
 
-Beta17 repair accepted run 45758250805 4/4. Beta18 integrated implementation is pending exact-head Android acceptance; roadmap remains 23/32, no CapCut parity claim. See BETA18_QA.md and BETA18_AI_ACCEPTANCE.md.
+Beta17 repair accepted run 45758250805 4/4. Beta18 integrated implementation has 140 local timeline assertions and 3 restoration harness tests passing; pending exact-head Android acceptance; roadmap remains 23/32, no CapCut parity claim. See BETA18_QA.md and BETA18_AI_ACCEPTANCE.md.
 
 ## Beta17 repair CI activation — 2026-11-26
 

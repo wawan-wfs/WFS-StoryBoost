@@ -43,6 +43,8 @@ jobs:
         run: |
           python3 tests/test_beta16_evidence.py -v
           bash tests/test_beta16_wrapper.sh
+          python3 tests/test_restoration_benchmark.py -v
+          python3 scripts/restoration_benchmark.py --out "$RUNNER_TEMP/restoration-baseline" > /dev/null
       - name: Fetch verified Qualcomm DnCNN model
         run: bash scripts/fetch-dncnn-model.sh
       - name: Build debug APK
