@@ -21,12 +21,13 @@ class EvidenceTest(unittest.TestCase):
             "renderMs=300 bytes=4096 durationMs=2000",
             "readyMs=430 durationMs=2001", "seekSettledMs=600", "seekSettledMs=1400",
             "soundtrackRms=0.05 gapRms=0.0 dip=verified", "soundtrackRms=0.05 gapRms=0.0 dip=verified",
-            "dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified","dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified"))
+            "dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified","dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified",
+            "crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001","crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001"))
         self.log.write_text(self.metrics)
         self.write_xml()
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
-        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
+        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
                  for n, tag in zip(qa.REQUIRED, (first, second) + ("",)*(len(qa.REQUIRED)-2))]
         if omit:
             cases.pop()
@@ -126,6 +127,21 @@ class EvidenceTest(unittest.TestCase):
     def test_early_voice_leak(self):
         self.log.write_text(self.metrics.replace('early440=0.001','early440=0.04'))
         with self.assertRaisesRegex(ValueError, 'dual-track'):
+            self.check()
+
+    def test_crossfade_missing(self):
+        self.log.write_text(self.metrics.replace('crossfadeVerified', 'unknown'))
+        with self.assertRaisesRegex(ValueError, 'crossfade'):
+            self.check()
+
+    def test_crossfade_missing_blue(self):
+        self.log.write_text(self.metrics.replace('midBlue=126', 'midBlue=0'))
+        with self.assertRaisesRegex(ValueError, 'crossfade'):
+            self.check()
+
+    def test_crossfade_missing_audio_ramp(self):
+        self.log.write_text(self.metrics.replace('overlap440=0.06', 'overlap440=0.12'))
+        with self.assertRaisesRegex(ValueError, 'crossfade'):
             self.check()
 
     def test_wrong_api(self):

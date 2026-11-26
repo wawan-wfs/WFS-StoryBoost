@@ -667,6 +667,49 @@ public class VideoMediaQaTest {
         }finally{TimelineDraftStore.clear(ctx);}
     }
     @Test(timeout=300000)
+    public void timelineCrossfadeRendersOverlappingVideoAndAudio()throws Exception{
+        Uri a=importFixture("qa-crossfade-red.mp4"),b=importFixture("qa-crossfade-blue.mp4");
+        byte[] shaA=hashSource(a),shaB=hashSource(b);
+        TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(a.toString(),2000,0,2000))
+                .append(TimelineProject.Clip.create(b.toString(),2000,0,2000)).crossfade(500);
+        assertEquals(3500,project.duration());
+        File output=null,preview=null;
+        try{
+            output=renderAdjusted(project,false);preview=renderAdjusted(project,true);
+            for(File file:new File[]{output,preview}){
+                MediaProbe.Info info=MediaProbe.inspect(file);
+                assertTrue(info.video&&info.audio);assertTrue(Math.abs(info.durationMs-3500)<=250);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file,300000,900000,1680000,1820000,2400000,3000000);
+                double early=pcm.firstTones.tone440(),earlyLeak=pcm.firstTones.tone780(),
+                        middleA=pcm.overlapTones.tone440(),middleB=pcm.overlapTones.tone780(),
+                        late=pcm.lastTones.tone780(),lateLeak=pcm.lastTones.tone440();
+                int[] pixels=new int[3];
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    long[] times={500000,1750000,2750000};
+                    for(int i=0;i<3;i++){
+                        android.graphics.Bitmap frame=reader.getFrameAtTime(times[i],MediaMetadataRetriever.OPTION_CLOSEST);
+                        assertNotNull(frame);
+                        try{pixels[i]=frame.getPixel(frame.getWidth()/2,frame.getHeight()/2);}finally{frame.recycle();}
+                    }
+                }
+                int red0=android.graphics.Color.red(pixels[0]),blue0=android.graphics.Color.blue(pixels[0]),
+                        red1=android.graphics.Color.red(pixels[1]),blue1=android.graphics.Color.blue(pixels[1]),
+                        red2=android.graphics.Color.red(pixels[2]),blue2=android.graphics.Color.blue(pixels[2]);
+                android.util.Log.i("WfsTimelinePreviewQA","crossfadeObserved duration="+info.durationMs+" rgb="+red0+","+blue0+","+red1+","+blue1+","+red2+","+blue2+" tones="+early+","+earlyLeak+","+middleA+","+middleB+","+late+","+lateLeak);
+                assertTrue("Red initial frame",red0>200&&blue0<30);
+                assertTrue("Both decoded video inputs must overlap",red1>75&&red1<180&&blue1>75&&blue1<180);
+                assertTrue("Blue final frame",blue2>200&&red2<30);
+                assertTrue("Early tone isolation",early>.05&&earlyLeak<early*.1);
+                assertTrue("Late tone isolation",late>.05&&lateLeak<late*.1);
+                assertTrue("Both audio ramps must overlap",middleA>early*.25&&middleA<early*.75&&middleB>late*.25&&middleB<late*.75);
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+                android.util.Log.i("WfsTimelinePreviewQA","crossfadeVerified duration="+info.durationMs+" midRed="+red1+" midBlue="+blue1+" early440="+early+" early780="+earlyLeak+" overlap440="+middleA+" overlap780="+middleB+" late780="+late+" late440="+lateLeak);
+            }
+            assertArrayEquals(shaA,hashSource(a));assertArrayEquals(shaB,hashSource(b));
+        }finally{if(output!=null)output.delete();if(preview!=null)preview.delete();}
+    }
+    @Test(timeout=300000)
     public void timelineZoomTransformsActualFrames()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);
         TimelineProject project=TimelineProject.empty()

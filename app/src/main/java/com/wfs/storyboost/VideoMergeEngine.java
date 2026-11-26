@@ -74,6 +74,8 @@ public final class VideoMergeEngine {
         ArrayList<EditedMediaItem> items=new ArrayList<>();
         boolean hasAudio=false,hasHdr=false;
         float maxFps=0f;
+        boolean[] clipAudio=new boolean[draft.clips.size()];
+        boolean crossfade=draft.crossfadeMs>0&&draft.clips.size()>1&&draft.overlap.duration<draft.clips.stream().mapToLong(TimelineProject.Clip::length).sum();
         AspectRatioProfile.Size canvas;
         try{
             Uri first=Uri.parse(draft.clips.get(0).uri);
@@ -91,7 +93,8 @@ public final class VideoMergeEngine {
                 long duration=MediaProbe.duration(context,uri);
                 if(!input.video||duration<=0||clip.out>duration)
                     throw new IllegalArgumentException("Media atau trim klip "+(sources.size()+1)+" berubah.");
-                hasAudio|=clip.adjustments.keepsAudio(input.audio);
+                clipAudio[sources.size()]=clip.adjustments.keepsAudio(input.audio);
+                hasAudio|=clipAudio[sources.size()];
                 hasHdr|=input.isHdr();maxFps=Math.max(maxFps,input.fps);
                 sources.add(uri);
                 MediaItem media=new MediaItem.Builder().setUri(uri)
@@ -108,9 +111,13 @@ public final class VideoMergeEngine {
             throw new IllegalArgumentException("Periksa akses dan trim sumber timeline. "+
                     (problem.getMessage()==null?"":problem.getMessage()),problem);
         }
-        EditedMediaItemSequence sequence=hasAudio?EditedMediaItemSequence.withAudioAndVideoFrom(items)
-                :EditedMediaItemSequence.withVideoFrom(items);
-        ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();sequences.add(sequence);
+        ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();
+        if(crossfade){
+            if(hasHdr)throw new IllegalArgumentException("Crossfade eksperimental belum mendukung HDR; gunakan dip-to-black.");
+            try{sequences.addAll(OverlapComposition.sequences(context,draft,clipAudio,canvas.width,canvas.height,
+                    Math.max(24,Math.min(60,Math.round(maxFps)))));}
+            catch(java.io.IOException ex){throw new IllegalArgumentException("Compositor overlap tidak dapat disiapkan.",ex);}
+        }else sequences.add(hasAudio?EditedMediaItemSequence.withAudioAndVideoFrom(items):EditedMediaItemSequence.withVideoFrom(items));
         for(TimelineProject.Audio audio:new TimelineProject.Audio[]{draft.audio,draft.voice}){
             if(audio==null)continue;
             Uri uri=Uri.parse(audio.uri);
@@ -136,11 +143,12 @@ public final class VideoMergeEngine {
             }catch(Exception ex){throw new IllegalArgumentException("Soundtrack tidak dapat dibaca. "+ex.getMessage(),ex);}
         }
         Composition.Builder builder=new Composition.Builder(sequences);
+        if(crossfade)builder.setVideoCompositorSettings(OverlapComposition.settings(draft.overlap,canvas.width,canvas.height));
         List<Effect> globalEffects=new ArrayList<>();
-        if(draft.hasZoom())globalEffects.add((androidx.media3.effect.MatrixTransformation)timeUs->{
+        if(!crossfade&&draft.hasZoom())globalEffects.add((androidx.media3.effect.MatrixTransformation)timeUs->{
             android.graphics.Matrix matrix=new android.graphics.Matrix();float scale=draft.zoomAtUs(timeUs);matrix.setScale(scale,scale);return matrix;
         });
-        if(draft.hasKeyframes()||(draft.fadeMs>0&&draft.clips.size()>1)){
+        if(!crossfade&&(draft.hasKeyframes()||(draft.fadeMs>0&&draft.clips.size()>1))){
             globalEffects.add((androidx.media3.effect.RgbMatrix)(timeUs,useHdr)->{
                 float g=draft.fadeGain(timeUs)*draft.gainAtUs(timeUs);
                 return new float[]{g,0,0,0,0,g,0,0,0,0,g,0,0,0,0,1};
@@ -205,7 +213,8 @@ public final class VideoMergeEngine {
                         listener.onFailure(message);
                     }
                 }).build();
-        transformer.start(composition,intermediate.getAbsolutePath());
+        try{transformer.start(composition,intermediate.getAbsolutePath());}
+        catch(RuntimeException failure){cancel();throw failure;}
     }
     /**
      * Transfer a completed MP4 to its Gallery worker or private player on the main thread.

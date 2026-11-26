@@ -12,12 +12,14 @@ import java.nio.ByteOrder;
 final class PcmWindowOracle {
     static final class Result {
         long mutedCount,audibleCount;
-        final PcmToneProbe firstTones=new PcmToneProbe(),overlapTones=new PcmToneProbe();
+        final PcmToneProbe firstTones=new PcmToneProbe(),overlapTones=new PcmToneProbe(),lastTones=new PcmToneProbe();
+        long lastCount;
         double mutedSquares,audibleSquares;
         double mutedRms(){return Math.sqrt(mutedSquares/Math.max(1,mutedCount));}
         double audibleRms(){return Math.sqrt(audibleSquares/Math.max(1,audibleCount));}
     }
-    static Result decode(File file)throws Exception{
+    static Result decode(File file)throws Exception{return decode(file,200000,800000,1200000,1800000,0,0);}
+    static Result decode(File file,long firstFrom,long firstTo,long middleFrom,long middleTo,long lastFrom,long lastTo)throws Exception{
         MediaExtractor extractor=new MediaExtractor();
         MediaCodec codec=null;
         try{
@@ -61,15 +63,16 @@ final class PcmWindowOracle {
                         while(pcm.remaining()>=2){
                             double value=pcm.getShort()/32768.0;
                             long us=info.presentationTimeUs+(sample++/channels)*1000000L/rate;
-                            if(us>=200000&&us<800000){result.mutedCount++;result.mutedSquares+=value*value;result.firstTones.add(us,value);}
-                            else if(us>=1200000&&us<1800000){result.audibleCount++;result.audibleSquares+=value*value;result.overlapTones.add(us,value);}
+                            if(us>=firstFrom&&us<firstTo){result.mutedCount++;result.mutedSquares+=value*value;result.firstTones.add(us,value);}
+                            else if(us>=middleFrom&&us<middleTo){result.audibleCount++;result.audibleSquares+=value*value;result.overlapTones.add(us,value);}
+                            else if(us>=lastFrom&&us<lastTo){result.lastCount++;result.lastTones.add(us,value);}
                         }
                     }
                     outputDone=(info.flags&MediaCodec.BUFFER_FLAG_END_OF_STREAM)!=0;
                     codec.releaseOutputBuffer(out,false);
                 }
             }
-            if(!outputDone||result.mutedCount<1000||result.audibleCount<1000)
+            if(!outputDone||result.mutedCount<1000||result.audibleCount<1000||(lastTo>lastFrom&&result.lastCount<1000))
                 throw new AssertionError("Incomplete decoded PCM evidence");
             return result;
         }finally{

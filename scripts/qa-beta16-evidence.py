@@ -23,6 +23,8 @@ REQUIRED = (
     "timelineWaveformCoversLateAudio",
     "zoomV5RoundTrip",
     "timelineZoomTransformsActualFrames",
+    "overlapV6RoundTrip",
+    "timelineCrossfadeRendersOverlappingVideoAndAudio",
 )
 
 
@@ -36,7 +38,7 @@ def evidence(reports, log, api, commit):
     for path in files:
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
-            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip") else CLASS)
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip") else CLASS)
             if case.get("classname") == expected_class and name in found:
                 found[name].append(case)
     for name, cases in found.items():
@@ -74,7 +76,14 @@ def evidence(reports, log, api, commit):
     if len(dual)!=2 or not all(0.015<a<=1 and a*1.3<b<=1 and .015<c<=1 and 0<=d<c*.1
                               and c*.65<e<c*1.35 and c*.65<f<c*1.35 for a,b,c,d,e,f in dual):
         raise ValueError("Missing or invalid dual-track spectral and keyframe evidence")
+    pattern_cross = r"\bcrossfadeVerified duration=(\d+) midRed=(\d+) midBlue=(\d+) early440="+number+" early780="+number+" overlap440="+number+" overlap780="+number+" late780="+number+" late440="+number
+    cross = [tuple(map(float,values)) for line in lines for values in re.findall(pattern_cross,line)]
+    if len(cross)!=2 or not all(3250<=d<=3750 and 75<r<180 and 75<b<180 and .05<a<=1 and 0<=leak<a*.1
+                                and .05<z<=1 and 0<=lastleak<z*.1 and a*.25<x<a*.75 and z*.25<y<z*.75
+                                for d,r,b,a,leak,x,y,z,lastleak in cross):
+        raise ValueError("Missing or invalid actual crossfade pixel/PCM evidence")
     return {"commit": commit, "api": api, "scope": "x86_64 emulator connected preview gate",
+            "crossfade":[dict(zip(("duration_ms","mid_red","mid_blue","early440","early780","overlap440","overlap780","late780","late440"),v)) for v in cross],
             "dual_track_pcm":[{"first_rms":a,"overlap_rms":b,"early780":c,"early440":d,"late780":e,"late440":f} for a,b,c,d,e,f in dual],
             "soundtrack_pcm": [{"audible_rms":a,"gap_rms":b} for a,b in mix],
             "required_tests": {name: "passed" for name in REQUIRED},

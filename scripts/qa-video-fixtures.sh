@@ -20,6 +20,15 @@ for variant in a b; do
     -c:v libx264 -pix_fmt yuv420p -preset ultrafast -c:a aac -b:a 80k \
     -movflags +faststart "$OUT/qa-timeline-$variant.mp4"
 done
+# Independent colored video and tone sources for actual overlap proof.
+for name in red blue; do
+  if [[ $name == red ]]; then frequency=440; else frequency=780; fi
+  ffmpeg -hide_banner -loglevel error -nostdin -y \
+    -f lavfi -i "color=c=$name:size=320x180:rate=24" \
+    -f lavfi -i "sine=frequency=$frequency:sample_rate=48000" -t 2 \
+    -c:v libx264 -pix_fmt yuv420p -preset ultrafast -c:a aac -b:a 96k \
+    -movflags +faststart "$OUT/qa-crossfade-$name.mp4"
+done
 # A real long waveform fixture: silence followed by a late 440 Hz tone.
 ffmpeg -hide_banner -loglevel error -nostdin -y \
  -f lavfi -i color=c=gray:size=160x160:rate=12 \
