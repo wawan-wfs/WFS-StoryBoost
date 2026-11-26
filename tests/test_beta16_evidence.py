@@ -21,7 +21,7 @@ class EvidenceTest(unittest.TestCase):
             "renderMs=300 bytes=4096 durationMs=2000",
             "readyMs=430 durationMs=2001", "seekSettledMs=600", "seekSettledMs=1400",
             "soundtrackRms=0.05 gapRms=0.0 dip=verified", "soundtrackRms=0.05 gapRms=0.0 dip=verified",
-            "dualTrackFirstRms=0.03 overlapRms=0.06 keyframe=verified","dualTrackFirstRms=0.03 overlapRms=0.06 keyframe=verified"))
+            "dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified","dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified"))
         self.log.write_text(self.metrics)
         self.write_xml()
 
@@ -116,6 +116,16 @@ class EvidenceTest(unittest.TestCase):
     def test_missing_dual_track(self):
         self.log.write_text(self.metrics.replace("dualTrackFirstRms=", "unknown="))
         with self.assertRaisesRegex(ValueError, "dual-track"):
+            self.check()
+
+    def test_missing_voice_frequency(self):
+        self.log.write_text(self.metrics.replace('late440=0.04','late440=0.0'))
+        with self.assertRaisesRegex(ValueError, 'dual-track'):
+            self.check()
+
+    def test_early_voice_leak(self):
+        self.log.write_text(self.metrics.replace('early440=0.001','early440=0.04'))
+        with self.assertRaisesRegex(ValueError, 'dual-track'):
             self.check()
 
     def test_wrong_api(self):

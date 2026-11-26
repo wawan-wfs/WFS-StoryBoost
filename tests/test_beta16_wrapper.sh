@@ -13,7 +13,7 @@ cat > bin/adb <<'MOCK'
 if [[ "$*" == 'shell getprop ro.build.version.sdk' ]]; then echo "${MOCK_API:-29}"
 elif [[ "$*" == 'shell getprop ro.product.cpu.abi' ]]; then echo x86_64
 elif [[ "$1" == logcat ]]; then
-  printf '%s\n' 'I/WfsTimelinePreviewQA: renderMs=300 bytes=4096 durationMs=2000' 'I/WfsTimelinePreviewQA: readyMs=430 durationMs=2001' 'I/WfsTimelinePreviewQA: seekSettledMs=600' 'I/WfsTimelinePreviewQA: seekSettledMs=1400' 'I/WfsTimelinePreviewQA: soundtrackRms=0.05 gapRms=0.0 dip=verified' 'I/WfsTimelinePreviewQA: soundtrackRms=0.05 gapRms=0.0 dip=verified' 'I/WfsTimelinePreviewQA: dualTrackFirstRms=0.03 overlapRms=0.06 keyframe=verified' 'I/WfsTimelinePreviewQA: dualTrackFirstRms=0.03 overlapRms=0.06 keyframe=verified'
+  printf '%s\n' 'I/WfsTimelinePreviewQA: renderMs=300 bytes=4096 durationMs=2000' 'I/WfsTimelinePreviewQA: readyMs=430 durationMs=2001' 'I/WfsTimelinePreviewQA: seekSettledMs=600' 'I/WfsTimelinePreviewQA: seekSettledMs=1400' 'I/WfsTimelinePreviewQA: soundtrackRms=0.05 gapRms=0.0 dip=verified' 'I/WfsTimelinePreviewQA: soundtrackRms=0.05 gapRms=0.0 dip=verified' 'I/WfsTimelinePreviewQA: dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified' 'I/WfsTimelinePreviewQA: dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified'
   exec sleep 300
 else exit 2
 fi

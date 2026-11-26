@@ -669,21 +669,28 @@ public class VideoMediaQaTest {
     @Test(timeout=300000)
     public void timelineDualTrackKeyframeAndWaveformRealMedia()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);
+        // Distinct tones remove phase-cancellation ambiguity: b=780Hz, a=440Hz.
+        Uri voiceSource=importFixture("qa-timeline-a.mp4");byte[] voiceHash=hashSource(voiceSource);
         TimelineProject.Audio music=new TimelineProject.Audio(source.toString(),2000,0,2000,0,35);
-        TimelineProject.Audio voice=new TimelineProject.Audio(source.toString(),2000,1000,2000,1000,35);
+        TimelineProject.Audio voice=new TimelineProject.Audio(voiceSource.toString(),2000,500,1500,1000,35);
         float[] peaks=AudioWaveformView.decode(ctx,music);assertEquals(AudioWaveformView.BINS,peaks.length);
         float peak=0;for(float v:peaks){assertTrue(v>=0&&v<=1);peak=Math.max(peak,v);}assertTrue(peak>.015f);
         TimelineProject draft=TimelineProject.empty()
-                .append(TimelineProject.Clip.create(source.toString(),2000,0,2000))
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
+                .append(TimelineProject.Clip.create(source.toString(),2000,500,1500))
                 .adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,0,0,0,true))
-                .soundtrack(music).voiceTrack(voice).keyframes(0,25,100);
+                .adjust(1,new ClipAdjustments(ColorLooks.ORIGINAL,0,0,0,true))
+                .soundtrack(music).voiceTrack(voice).keyframes(0,25,60).keyframes(1,60,100);
         File output=renderAdjusted(draft,false),preview=null;
         try{
             preview=renderAdjusted(draft,true);
             for(File file:new File[]{output,preview}){
                 assertTrue(MediaProbe.inspect(file).audio);
                 PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file);
+                double early780=pcm.firstTones.tone780(),early440=pcm.firstTones.tone440(),late780=pcm.overlapTones.tone780(),late440=pcm.overlapTones.tone440();
+                android.util.Log.i("WfsTimelinePreviewQA","dualTrackObserved firstRms="+pcm.mutedRms()+" overlapRms="+pcm.audibleRms()+" early780="+early780+" early440="+early440+" late780="+late780+" late440="+late440);
                 assertTrue("First audio lane must be audible",pcm.mutedRms()>.015);
+                assertTrue("Both distinct tones must survive overlap, with no early voice leakage",PcmToneProbe.provesOverlap(early780,early440,late780,late440));
                 assertTrue("Overlapping second lane must raise RMS",pcm.audibleRms()>pcm.mutedRms()*1.3);
                 assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
                 try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
@@ -694,9 +701,9 @@ public class VideoMediaQaTest {
                     try{assertTrue("Gain animation must brighten frame",((first.getPixel(120,120)>>16)&255)+10<((last.getPixel(120,120)>>16)&255));}
                     finally{first.recycle();last.recycle();}
                 }
-                android.util.Log.i("WfsTimelinePreviewQA","dualTrackFirstRms="+pcm.mutedRms()+" overlapRms="+pcm.audibleRms()+" keyframe=verified");
+                android.util.Log.i("WfsTimelinePreviewQA","dualTrackFirstRms="+pcm.mutedRms()+" overlapRms="+pcm.audibleRms()+" early780="+early780+" early440="+early440+" late780="+late780+" late440="+late440+" keyframe=verified");
             }
-            assertArrayEquals(hash,hashSource(source));
+            assertArrayEquals(hash,hashSource(source));assertArrayEquals(voiceHash,hashSource(voiceSource));
         }finally{output.delete();if(preview!=null)preview.delete();}
     }
     @Test(timeout=300000)

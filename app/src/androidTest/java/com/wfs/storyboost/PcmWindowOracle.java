@@ -12,6 +12,7 @@ import java.nio.ByteOrder;
 final class PcmWindowOracle {
     static final class Result {
         long mutedCount,audibleCount;
+        final PcmToneProbe firstTones=new PcmToneProbe(),overlapTones=new PcmToneProbe();
         double mutedSquares,audibleSquares;
         double mutedRms(){return Math.sqrt(mutedSquares/Math.max(1,mutedCount));}
         double audibleRms(){return Math.sqrt(audibleSquares/Math.max(1,audibleCount));}
@@ -60,8 +61,8 @@ final class PcmWindowOracle {
                         while(pcm.remaining()>=2){
                             double value=pcm.getShort()/32768.0;
                             long us=info.presentationTimeUs+(sample++/channels)*1000000L/rate;
-                            if(us>=200000&&us<800000){result.mutedCount++;result.mutedSquares+=value*value;}
-                            else if(us>=1200000&&us<1800000){result.audibleCount++;result.audibleSquares+=value*value;}
+                            if(us>=200000&&us<800000){result.mutedCount++;result.mutedSquares+=value*value;result.firstTones.add(us,value);}
+                            else if(us>=1200000&&us<1800000){result.audibleCount++;result.audibleSquares+=value*value;result.overlapTones.add(us,value);}
                         }
                     }
                     outputDone=(info.flags&MediaCodec.BUFFER_FLAG_END_OF_STREAM)!=0;

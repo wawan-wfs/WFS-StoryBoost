@@ -65,12 +65,14 @@ def evidence(reports, log, api, commit):
         r"\bsoundtrackRms=([0-9.eE+-]+) gapRms=([0-9.eE+-]+) dip=verified\b", line)]
     if len(mix)<2 or not all(0.015<a<=1 and 0<=b<a*0.1 for a,b in mix):
         raise ValueError("Missing or invalid decoded soundtrack and dip evidence on preview/export")
-    dual = [(float(a),float(b)) for line in lines for a,b in re.findall(
-        r"\bdualTrackFirstRms=([0-9.eE+-]+) overlapRms=([0-9.eE+-]+) keyframe=verified\b",line)]
-    if len(dual)<2 or not all(0.015<a<=1 and a*1.3<b<=1 for a,b in dual):
-        raise ValueError("Missing or invalid dual-track and keyframe evidence")
+    number = r"([0-9.eE+-]+)"
+    pattern = r"\bdualTrackFirstRms="+number+" overlapRms="+number+" early780="+number+" early440="+number+" late780="+number+" late440="+number+r" keyframe=verified\b"
+    dual = [tuple(map(float,values)) for line in lines for values in re.findall(pattern,line)]
+    if len(dual)!=2 or not all(0.015<a<=1 and a*1.3<b<=1 and .015<c<=1 and 0<=d<c*.1
+                              and c*.65<e<c*1.35 and c*.65<f<c*1.35 for a,b,c,d,e,f in dual):
+        raise ValueError("Missing or invalid dual-track spectral and keyframe evidence")
     return {"commit": commit, "api": api, "scope": "x86_64 emulator connected preview gate",
-            "dual_track_pcm":[{"first_rms":a,"overlap_rms":b} for a,b in dual],
+            "dual_track_pcm":[{"first_rms":a,"overlap_rms":b,"early780":c,"early440":d,"late780":e,"late440":f} for a,b,c,d,e,f in dual],
             "soundtrack_pcm": [{"audible_rms":a,"gap_rms":b} for a,b in mix],
             "required_tests": {name: "passed" for name in REQUIRED},
             "render": render, "ready": ready, "seek_settled_ms": seeks,
