@@ -45,6 +45,16 @@ jobs:
           bash tests/test_beta16_wrapper.sh
           python3 tests/test_restoration_benchmark.py -v
           python3 scripts/restoration_benchmark.py --out "$RUNNER_TEMP/restoration-baseline" > /dev/null
+      - name: Crossfade reference host media oracle
+        run: |
+          command -v ffmpeg && command -v ffprobe || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
+          python3 scripts/crossfade_reference.py --out "$RUNNER_TEMP/crossfade-reference"
+      - name: Upload host overlap reference (not Android)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WFS-StoryBoost-host-crossfade-reference
+          path: ${{ runner.temp }}/crossfade-reference/
+          if-no-files-found: error
       - name: Fetch verified Qualcomm DnCNN model
         run: bash scripts/fetch-dncnn-model.sh
       - name: Build debug APK

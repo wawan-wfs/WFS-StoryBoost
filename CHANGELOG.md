@@ -3,7 +3,7 @@
 ## Beta20 integrated candidate — 2026-11-26
 - Actual Beta19 failure on both APIs; strengthen dual-track PCM oracle with separate 440/780 Hz inputs, phase-independent spectral checks and pre-assert diagnostics, preserve RMS threshold.
 - Full-range waveform up to 120s; distributed sampled overview for longer ranges, global time alignment; zoom keyframes 50–200% and selective v5 draft storage.
-- Added host and Android pixel/PCM/migration tests, exact-head CI pending; no crossfade or neural model activation claim.
+- 50 local tone assertions pass; 20s late-tone fixture verified. Added real host crossfade video/audio reference and mandatory CI oracle, not an Android compositor. Android pixel/PCM/migration tests pending exact-head CI; no neural model activation claim.
 
 ## Beta19 integrated candidate — 2026-11-26
 - Beta18 accepted 4/4; adds two independent audio lanes, bounded real PCM waveform, local drag reorder, RGB gain keyframes and selective v4 drafts.

@@ -64,6 +64,7 @@ final class AudioWaveformView extends View {
         float left=getWidth()*current.start/(float)timelineDuration;
         float span=getWidth()*current.length()/(float)timelineDuration;
         float width=span/BINS,center=getHeight()/2f;
+        if(current.length()>MAX_MS){paint.setColor(StudioUi.MUTED);paint.setTextSize(StudioUi.dp(getContext(),10));canvas.drawText("Sampel PCM",8,StudioUi.dp(getContext(),11),paint);}
         paint.setColor(StudioUi.GREEN);paint.setStrokeWidth(Math.max(1,width*.65f));
         for(int i=0;i<BINS;i++){float h=peaks[i]*center*.9f;float x=left+(i+.5f)*width;canvas.drawLine(x,center-h,x,center+h,paint);}
     }
