@@ -635,6 +635,37 @@ public class VideoMediaQaTest {
         }finally{TimelineDraftStore.clear(ctx);}
     }
 
+    @Test(timeout=90000)
+    public void timelineVoiceAndKeyframeUiPersists()throws Exception{
+        Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);
+        TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(source.toString(),2000,0,2000))
+            .voiceTrack(new TimelineProject.Audio(source.toString(),2000,0,1000,500,30));
+        assertTrue(TimelineDraftStore.save(ctx,project));
+        Intent open=new Intent(ctx,StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
+        try(ActivityScenario<StudioMergeActivity> activity=ActivityScenario.launch(open)){
+            tapTimelineControl("Edit voice");
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Volume audio (1–100%)"))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.replaceText("45"),
+                    androidx.test.espresso.action.ViewActions.closeSoftKeyboard());
+            assertEquals(30,TimelineDraftStore.load(ctx).voice.volume);
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(android.R.id.button1))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(androidx.test.espresso.action.ViewActions.click());
+            assertEquals(45,TimelineDraftStore.load(ctx).voice.volume);
+            tapTimelineControl("Keyframe");
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("Gain awal (25–150%)"))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog())
+                .perform(androidx.test.espresso.action.ViewActions.replaceText("40"),androidx.test.espresso.action.ViewActions.closeSoftKeyboard());
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(android.R.id.button1))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(androidx.test.espresso.action.ViewActions.click());
+            assertEquals(40,TimelineDraftStore.load(ctx).clips.get(0).gainStart);
+            tapTimelineControl("Undo");assertEquals(100,TimelineDraftStore.load(ctx).clips.get(0).gainStart);
+            tapTimelineControl("Redo");assertEquals(40,TimelineDraftStore.load(ctx).clips.get(0).gainStart);
+            activity.recreate();assertEquals(45,TimelineDraftStore.load(ctx).voice.volume);
+            assertEquals(40,TimelineDraftStore.load(ctx).clips.get(0).gainStart);
+            assertArrayEquals(hash,hashSource(source));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test(timeout=300000)
     public void timelineDualTrackKeyframeAndWaveformRealMedia()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);

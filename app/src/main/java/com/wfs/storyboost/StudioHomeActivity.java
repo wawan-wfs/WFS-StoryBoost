@@ -114,7 +114,7 @@ public final class StudioHomeActivity extends Activity {
         aiLp.leftMargin=d(10);third.addView(ai,aiLp);
         content.addView(third);
         gap(content,10);
-        content.addView(tile("▤","Timeline Studio","Susun klip, atur trim dan waktu caption",0xFF6855BE,
+        content.addView(tile("▤","Timeline Studio","Klip, soundtrack, voice, keyframe dan caption",0xFF6855BE,
                 ()->startActivity(new Intent(this,StudioMergeActivity.class)
                         .putExtra(StudioMergeActivity.EXTRA_TIMELINE,true))),
                 new LinearLayout.LayoutParams(-1,d(104)));

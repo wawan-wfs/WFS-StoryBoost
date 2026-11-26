@@ -12,8 +12,9 @@ import android.media.AudioFormat;
 import android.os.SystemClock;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Future;
 
 /** Real PCM peak overview of the first 15 seconds of a trimmed audio selection.
@@ -23,7 +24,7 @@ final class AudioWaveformView extends View {
     static final int BINS=80;
     static final long MAX_MS=15000;
     private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>());
     private Future<?> task;
     private TimelineProject.Audio current;
     private float[] peaks;
@@ -32,9 +33,14 @@ final class AudioWaveformView extends View {
     private boolean closed;
     AudioWaveformView(Context context){super(context);setContentDescription(state);}
     void bind(TimelineProject.Audio audio){
-        if(closed||audio==current)return;
+        if(closed)return;
+        if(audio==current){
+            if(audio==null||SourceAccess.canRead(getContext(),Uri.parse(audio.uri)))return;
+            ++generation;if(task!=null)task.cancel(true);worker.purge();peaks=null;
+            state="Izin audio hilang";setContentDescription(state);invalidate();return;
+        }
         current=audio;int token=++generation;
-        if(task!=null)task.cancel(true);
+        if(task!=null)task.cancel(true);worker.purge();
         peaks=null;state=audio==null?"Tidak ada audio":"Membaca PCM…";setContentDescription(state);invalidate();
         if(audio==null)return;
         task=worker.submit(()->{
@@ -70,6 +76,7 @@ final class AudioWaveformView extends View {
             format.setInteger(MediaFormat.KEY_PCM_ENCODING,AudioFormat.ENCODING_PCM_16BIT);
             codec.configure(format,null,null,0);codec.start();
             int rate=format.getInteger(MediaFormat.KEY_SAMPLE_RATE),channels=format.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+            if(rate<=0||channels<=0)throw new java.io.IOException("Invalid PCM format");
             boolean fed=false,done=false;long samples=0;float[] bins=new float[BINS];
             MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();long deadline=SystemClock.elapsedRealtime()+12000;
             while(!done&&!Thread.currentThread().isInterrupted()&&SystemClock.elapsedRealtime()<deadline){
@@ -84,6 +91,7 @@ final class AudioWaveformView extends View {
                 int slot=codec.dequeueOutputBuffer(info,5000);
                 if(slot==MediaCodec.INFO_OUTPUT_FORMAT_CHANGED){
                     MediaFormat f=codec.getOutputFormat();rate=f.getInteger(MediaFormat.KEY_SAMPLE_RATE);channels=f.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+                    if(rate<=0||channels<=0)throw new java.io.IOException("Invalid PCM format");
                     if(f.getInteger(MediaFormat.KEY_PCM_ENCODING,AudioFormat.ENCODING_PCM_16BIT)!=AudioFormat.ENCODING_PCM_16BIT)
                         throw new java.io.IOException("PCM16 required");
                 }else if(slot>=0){

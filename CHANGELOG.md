@@ -2,7 +2,7 @@
 
 ## Beta19 integrated candidate — 2026-11-26
 - Beta18 accepted 4/4; adds two independent audio lanes, bounded real PCM waveform, local drag reorder, RGB gain keyframes and selective v4 drafts.
-- Added exact media/runtime and storage tests; new Android acceptance pending. Crossfade and neural model activation remain open.
+- Added exact media/runtime, storage, UI edit and v4 force-stop tests; new Android acceptance pending. Crossfade and neural model activation remain open.
 
 ## Beta18 integrated candidate — 2026-11-26
 - Timeline scrub, zoom, split and duplicate; separate soundtrack, source trim, start offset, gain and dip-to-black transitions; v3 selective draft schema; shared rendered preview/export and source-aware bitrate.

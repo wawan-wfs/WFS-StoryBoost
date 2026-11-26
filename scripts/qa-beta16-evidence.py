@@ -19,6 +19,7 @@ REQUIRED = (
     "timelineInteractiveSplitAndSoundtrackPanel",
     "dualTrackAndKeyframesV4RoundTrip",
     "timelineDualTrackKeyframeAndWaveformRealMedia",
+    "timelineVoiceAndKeyframeUiPersists",
 )
 
 
