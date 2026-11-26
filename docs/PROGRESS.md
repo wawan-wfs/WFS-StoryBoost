@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta21 integrated candidate
+
+Beta20 API35 full acceptance passed, API29 pending at checkpoint. Candidate adds experimental Android compositor and original offline Restoration Lab with actual local training/inference evidence. Device gates still pending; roadmap remains 23/32 until independently accepted module recount. See BETA21_QA.md and RESTORATION_LAB_MODEL_CARD.md.
+
 ## Beta20 integrated candidate
 
 Beta19 run 45839456557 2/4 failed dual-track RMS on both APIs. New spectral oracle, full-range bounded waveform, animated zoom and v5 storage implemented; exact-head CI pending. Roadmap 23/32 unchanged.

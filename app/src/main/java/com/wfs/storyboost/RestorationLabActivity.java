@@ -15,13 +15,14 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import java.io.InputStream;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.Future;
 
 /** Opt-in, local-only bounded preview. No production export, no file writes or photo persistence. */
 public final class RestorationLabActivity extends Activity {
-    private final ExecutorService worker=Executors.newSingleThreadExecutor();
+    private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>());
     private Future<?> pending;private int generation;private boolean closed;
     private TextView status;private ImageView before,after;private Button deblur,sr,demo;
     private int dp(int n){return StudioUi.dp(this,n);}
@@ -71,7 +72,7 @@ public final class RestorationLabActivity extends Activity {
     }
     private static int channel(int v){return Math.max(0,Math.min(255,v));}
     private void run(Uri uri,boolean upscale){
-        final int token=++generation;if(pending!=null)pending.cancel(true);
+        final int token=++generation;if(pending!=null)pending.cancel(true);worker.purge();
         before.setImageDrawable(null);after.setImageDrawable(null);status.setText("Inferensi CPU berlangsung…");
         pending=worker.submit(()->{
             Bitmap input=null,baseline=null,output=null;boolean handed=false;
@@ -79,7 +80,7 @@ public final class RestorationLabActivity extends Activity {
                 input=read(uri,upscale);
                 baseline=upscale?Bitmap.createScaledBitmap(input,input.getWidth()*2,input.getHeight()*2,true):input;
                 int w=baseline.getWidth(),h=baseline.getHeight();int[] rgba=new int[w*h];baseline.getPixels(rgba,0,w,0,0,w,h);float[] y=new float[rgba.length];
-                for(int i=0;i<y.length;i++)y[i]=(.2126f*Color.red(rgba[i])+.7152f*Color.green(rgba[i])+.0722f*Color.blue(rgba[i]))/255f;
+                for(int i=0;i<y.length;i++)y[i]=Math.max(0f,Math.min(1f,(.2126f*Color.red(rgba[i])+.7152f*Color.green(rgba[i])+.0722f*Color.blue(rgba[i]))/255f));
                 RestorationLab model;
                 try(InputStream stream=getAssets().open("restoration-lab/"+(upscale?"sr2x":"deblur")+".weights.txt")){model=RestorationLab.load(stream,upscale);}
                 long start=SystemClock.elapsedRealtimeNanos();float[] prediction=model.infer(y,w,h);long ms=(SystemClock.elapsedRealtimeNanos()-start)/1000000L;

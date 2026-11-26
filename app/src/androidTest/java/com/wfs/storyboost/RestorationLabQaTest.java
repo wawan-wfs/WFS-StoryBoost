@@ -42,6 +42,8 @@ public class RestorationLabQaTest {
             androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Uji demo sintetis SR 2×"))
                     .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click());
             assertNotNull(device.wait(Until.findObject(By.textStartsWith("Preview neural siap")),20000));
+            Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+            assertTrue(device.takeScreenshot(new java.io.File(ctx.getFilesDir(),"qa-restoration-lab.png")));
         }
     }
 }

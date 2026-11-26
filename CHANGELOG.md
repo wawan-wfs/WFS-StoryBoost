@@ -1,5 +1,10 @@
 # WFS StoryBoost changelog
 
+## Beta21 integrated candidate — 2026-11-26
+- Added experimental real Android overlap compositor, two alternating video lanes, audio ramps, overlap duration model, confirmation, v6 draft schema and actual decoded pixel/PCM gate.
+- Original MIT-scoped tiny Deblur and SR2x CNN lab, native bounded offline preview, SHA-pinned model assets, reproducible trainer, host and Android inference tests and real demo screenshot capture.
+- Local exact-source schedule 35,133 and model 144 assertions pass; cross-language float parity verified. Beta20 API35 dual-track PCM and recovery pass, API29 pending at checkpoint. New Android acceptance pending. No HDR crossfade, arbitrary overlay, full-photo model acceptance or release claim.
+
 ## Beta20 integrated candidate — 2026-11-26
 - Actual Beta19 failure on both APIs; strengthen dual-track PCM oracle with separate 440/780 Hz inputs, phase-independent spectral checks and pre-assert diagnostics, preserve RMS threshold.
 - Full-range waveform up to 120s; distributed sampled overview for longer ranges, global time alignment; zoom keyframes 50–200% and selective v5 draft storage.

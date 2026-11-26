@@ -170,6 +170,7 @@ public final class VideoMergeEngine {
         cancelled=false;
         intermediate=new File(context.getCacheDir(),filePrefix+java.util.UUID.randomUUID()+".mp4");
         final File attemptFile=intermediate;
+        final long began=android.os.SystemClock.elapsedRealtime();
         Transformer.Builder encoder=new Transformer.Builder(context);
         if(bitrate>0)encoder.setEncoderFactory(new androidx.media3.transformer.DefaultEncoderFactory.Builder(context)
                 .setRequestedVideoEncoderSettings(new androidx.media3.transformer.VideoEncoderSettings.Builder()
@@ -199,6 +200,9 @@ public final class VideoMergeEngine {
                                 if(actual.width!=width||actual.height!=height)
                                     throw new java.io.IOException("Ukuran output timeline tidak sesuai.");
                             }
+                            android.util.Log.i("WfsTimelinePreviewQA","exportMetrics elapsedMs="+(android.os.SystemClock.elapsedRealtime()-began)
+                                    +" durationMs="+info.durationMs+" bytes="+intermediate.length()+" width="+width+" height="+height
+                                    +" requestedBitrate="+bitrate+" processPssKb="+android.os.Debug.getPss());
                             listener.onCompleted(intermediate);
                         }catch(Exception ex){
                             clean();

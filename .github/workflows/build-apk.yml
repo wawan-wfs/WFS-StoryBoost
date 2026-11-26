@@ -258,6 +258,9 @@ jobs:
             bash scripts/qa-video-fixtures.sh
             bash scripts/fetch-dncnn-model.sh
             bash scripts/qa-beta16-connected.sh ${{ matrix.api }}
+            adb exec-out run-as com.wfs.storyboost.studio cat files/qa-restoration-lab.png > qa-beta16-preview/restoration-lab.png
+            python3 -c 'from pathlib import Path; data=Path("qa-beta16-preview/restoration-lab.png").read_bytes(); assert data.startswith(bytes.fromhex("89504e470d0a1a0a")) and len(data)>1024'
+            adb shell run-as com.wfs.storyboost.studio rm files/qa-restoration-lab.png
             bash scripts/qa-process-death-local.sh
             bash scripts/qa-process-death-timeline.sh
             bash scripts/qa-process-death-pending.sh
