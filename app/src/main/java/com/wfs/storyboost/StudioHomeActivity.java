@@ -120,6 +120,8 @@ public final class StudioHomeActivity extends Activity {
                 new LinearLayout.LayoutParams(-1,d(104)));
         gap(content,19);
 
+        content.addView(tile("✦","Restoration Lab","Deblur & SR 2× neural eksperimental · offline",0xFF2D988F,
+                ()->startActivity(new Intent(this,RestorationLabActivity.class))),new LinearLayout.LayoutParams(-1,d(92)));gap(content,12);
         content.addView(text("Format Cepat",21,TEXT,true));gap(content,9);
         LinearLayout formats=StudioUi.row(this);
         String[] names={"▯  9:16","▭  16:9","□  1:1"};

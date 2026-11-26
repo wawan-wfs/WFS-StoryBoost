@@ -24,6 +24,8 @@
         <activity android:name="com.wfs.storyboost.StudioMergeActivity"
             android:exported="false"
             android:screenOrientation="portrait"/>
+        <activity android:name="com.wfs.storyboost.RestorationLabActivity"
+            android:exported="false" android:screenOrientation="portrait"/>
         <activity android:name="com.wfs.storyboost.MainActivity"
             android:exported="false"
             android:screenOrientation="portrait"
