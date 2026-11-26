@@ -11,3 +11,7 @@ Additional integrated acceptance: bounded 2 MiB in-memory thumbnails, single wor
 ## Host tests completed before final integrated push
 
 140 integrated timeline assertions passed using javac/java and exact Git blob hashes: TimelineProject.java 7436e75cb0370cf734932dc2c7ccf39fdee44e3e; ClipAdjustments.java 1de328029e90b8ac77ee518123dbbd7942924c85; ColorLooks.java dd3012ce4deb8572ef35cb5c74ba95db8710cfad; TimelineNavigation.java f4ccbbf423af3c17c6e90f8c43230a3b64c49d77; TimelineBatchTest.java 2dfbdc777f05580d335c45df4d108be23a13e2d6. Three synthetic restoration harness unit tests passed locally; eight baseline cases generated, no learned model output. Exact-head Android build/encoder/UI and newly extended evidence parser/wrapper still require final CI. Baseline repair run 45758250805 included PID replacement 10028→10121 API29, 7938→8029 API35, cache recovery and preview revocation verified on both APIs.
+
+## Accepted exact baseline
+
+Run 45761920569 at 7bcf7948fd9f4fb4f879ddc8328b817887e9e52d: 4/4 jobs passed; 399 host checks (159+62+12+140+18+5+3), soundtrack RMS 0.04361693895039837 API29 and 0.04371427230447429 API35, gap RMS 0.0 in preview and export; real PID replacement 10411→10523 and 8221→8327, cache recovery and preview revocation verified. APK/screenshot and JUnit artifacts available. Hardware HDR and stable signing remain open.

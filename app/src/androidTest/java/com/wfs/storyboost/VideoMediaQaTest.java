@@ -636,6 +636,39 @@ public class VideoMediaQaTest {
     }
 
     @Test(timeout=300000)
+    public void timelineDualTrackKeyframeAndWaveformRealMedia()throws Exception{
+        Uri source=importFixture("qa-timeline-b.mp4");byte[] hash=hashSource(source);
+        TimelineProject.Audio music=new TimelineProject.Audio(source.toString(),2000,0,2000,0,35);
+        TimelineProject.Audio voice=new TimelineProject.Audio(source.toString(),2000,1000,2000,1000,35);
+        float[] peaks=AudioWaveformView.decode(ctx,music);assertEquals(AudioWaveformView.BINS,peaks.length);
+        float peak=0;for(float v:peaks){assertTrue(v>=0&&v<=1);peak=Math.max(peak,v);}assertTrue(peak>.015f);
+        TimelineProject draft=TimelineProject.empty()
+                .append(TimelineProject.Clip.create(source.toString(),2000,0,2000))
+                .adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,0,0,0,true))
+                .soundtrack(music).voiceTrack(voice).keyframes(0,25,100);
+        File output=renderAdjusted(draft,false),preview=null;
+        try{
+            preview=renderAdjusted(draft,true);
+            for(File file:new File[]{output,preview}){
+                assertTrue(MediaProbe.inspect(file).audio);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file);
+                assertTrue("First audio lane must be audible",pcm.mutedRms()>.015);
+                assertTrue("Overlapping second lane must raise RMS",pcm.audibleRms()>pcm.mutedRms()*1.3);
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    android.graphics.Bitmap first=reader.getFrameAtTime(300000,MediaMetadataRetriever.OPTION_CLOSEST);
+                    android.graphics.Bitmap last=reader.getFrameAtTime(1700000,MediaMetadataRetriever.OPTION_CLOSEST);
+                    assertNotNull(first);assertNotNull(last);
+                    try{assertTrue("Gain animation must brighten frame",((first.getPixel(120,120)>>16)&255)+10<((last.getPixel(120,120)>>16)&255));}
+                    finally{first.recycle();last.recycle();}
+                }
+                android.util.Log.i("WfsTimelinePreviewQA","dualTrackFirstRms="+pcm.mutedRms()+" overlapRms="+pcm.audibleRms()+" keyframe=verified");
+            }
+            assertArrayEquals(hash,hashSource(source));
+        }finally{output.delete();if(preview!=null)preview.delete();}
+    }
+    @Test(timeout=300000)
     public void timelineSoundtrackAndDipRenderRealMedia()throws Exception{
         Uri source=importFixture("qa-timeline-b.mp4");
         byte[] hash=hashSource(source);

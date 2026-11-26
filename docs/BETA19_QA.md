@@ -1,0 +1,5 @@
+# Beta19 integrated candidate
+
+Baseline 7bcf7948fd9f4fb4f879ddc8328b817887e9e52d passed 45761920569. Adds second independent audio-only lane (voice), bounded decoded PCM16 peak waveforms for first 15 seconds of trimmed audio, local long-press drag reorder, two endpoint RGB gain keyframes, v4 storage with v1-v3 compatibility and original draft preservation, split/trim interpolation and source revalidation for both audio lanes. Preview and export share the same composition and gains; raw source player remains unmixed. Waveforms are overview only, not full-duration or aligned to global time. No recordings, arbitrary multi-video tracks or arbitrary keyframe curves.
+
+New runtime tests require actual overlapping PCM energy, decoded frame brightness, waveform peaks, v4 round trip, original hash and mandatory parser evidence. Still need actual gesture/viewport matrix, v4 force-stop and separate voice provider revocation tests, cancellation stress, and benchmark. No actual crossfade overlap compositor or neural deblur/SR activation; dip-to-black remains. Exact-head Android QA pending.

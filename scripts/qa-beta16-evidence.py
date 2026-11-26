@@ -17,6 +17,8 @@ REQUIRED = (
     "soundtrackAndFadeV3RoundTrip",
     "timelineSoundtrackAndDipRenderRealMedia",
     "timelineInteractiveSplitAndSoundtrackPanel",
+    "dualTrackAndKeyframesV4RoundTrip",
+    "timelineDualTrackKeyframeAndWaveformRealMedia",
 )
 
 
@@ -30,7 +32,7 @@ def evidence(reports, log, api, commit):
     for path in files:
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
-            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip") else CLASS)
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip") else CLASS)
             if case.get("classname") == expected_class and name in found:
                 found[name].append(case)
     for name, cases in found.items():
@@ -62,7 +64,12 @@ def evidence(reports, log, api, commit):
         r"\bsoundtrackRms=([0-9.eE+-]+) gapRms=([0-9.eE+-]+) dip=verified\b", line)]
     if len(mix)<2 or not all(0.015<a<=1 and 0<=b<a*0.1 for a,b in mix):
         raise ValueError("Missing or invalid decoded soundtrack and dip evidence on preview/export")
+    dual = [(float(a),float(b)) for line in lines for a,b in re.findall(
+        r"\bdualTrackFirstRms=([0-9.eE+-]+) overlapRms=([0-9.eE+-]+) keyframe=verified\b",line)]
+    if len(dual)<2 or not all(0.015<a<=1 and a*1.3<b<=1 for a,b in dual):
+        raise ValueError("Missing or invalid dual-track and keyframe evidence")
     return {"commit": commit, "api": api, "scope": "x86_64 emulator connected preview gate",
+            "dual_track_pcm":[{"first_rms":a,"overlap_rms":b} for a,b in dual],
             "soundtrack_pcm": [{"audible_rms":a,"gap_rms":b} for a,b in mix],
             "required_tests": {name: "passed" for name in REQUIRED},
             "render": render, "ready": ready, "seek_settled_ms": seeks,

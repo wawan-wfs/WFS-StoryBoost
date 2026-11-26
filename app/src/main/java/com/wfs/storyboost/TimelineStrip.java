@@ -28,7 +28,9 @@ final class TimelineStrip extends LinearLayout {
     private final IntConsumer select;
     private String selectionKey="";
     private final SeekBar scrub;
-    private final TextView audioLane;
+    private final TextView audioLane,voiceLane;
+    private final AudioWaveformView audioWave,voiceWave;
+    private final java.util.function.BiConsumer<Integer,Integer> reorder;
     private final TextView captionLane;
     private TimelineProject current=TimelineProject.empty();
     private int currentSelection=-1,zoom=1;
@@ -47,7 +49,7 @@ final class TimelineStrip extends LinearLayout {
         pending.clear();loader.purge();
     }
     void close(){
-        closed=true;cancelThumbnails();loader.shutdownNow();thumbnails.evictAll();
+        closed=true;cancelThumbnails();loader.shutdownNow();thumbnails.evictAll();audioWave.close();voiceWave.close();
     }
     private void requestThumbnail(TimelineProject.Clip clip,ImageView target){
         if(closed)return;
@@ -72,8 +74,8 @@ final class TimelineStrip extends LinearLayout {
             });
         }));
     }
-    TimelineStrip(Context context,IntConsumer select,LongConsumer seek){
-        super(context);this.select=select;setOrientation(VERTICAL);
+    TimelineStrip(Context context,IntConsumer select,LongConsumer seek,java.util.function.BiConsumer<Integer,Integer> reorder){
+        super(context);this.select=select;this.reorder=reorder;setOrientation(VERTICAL);
         setPadding(dp(12),dp(12),dp(12),dp(12));
         setBackground(StudioUi.solid(context,StudioUi.PANEL,16));
         addView(StudioUi.text(context,"TIMELINE  /  VIDEO",11,StudioUi.CYAN,true));
@@ -97,8 +99,12 @@ final class TimelineStrip extends LinearLayout {
         track=StudioUi.row(context);scroll.addView(track,new HorizontalScrollView.LayoutParams(-2,-2));
         addView(scroll,new LayoutParams(-1,-2));
         audioLane=StudioUi.text(context,"AUDIO • belum ada soundtrack",12,StudioUi.GREEN,true);
+        voiceLane=StudioUi.text(context,"VOICE • belum ada track",12,StudioUi.CYAN,true);
+        audioWave=new AudioWaveformView(context);voiceWave=new AudioWaveformView(context);
         captionLane=StudioUi.text(context,"CAPTION • kosong",11,StudioUi.LAVENDER,true);
-        StudioUi.gap(this,context,10);addView(audioLane);StudioUi.gap(this,context,8);addView(captionLane);
+        StudioUi.gap(this,context,10);addView(audioLane);addView(audioWave,new LayoutParams(-1,dp(38)));
+        StudioUi.gap(this,context,8);addView(voiceLane);addView(voiceWave,new LayoutParams(-1,dp(38)));
+        StudioUi.gap(this,context,8);addView(captionLane);
     }
     private int dp(int n){return StudioUi.dp(getContext(),n);}
     private static String time(long ms){return String.format(Locale.ROOT,"%02d:%02d.%03d",ms/60000,ms/1000%60,ms%1000);}
@@ -106,6 +112,8 @@ final class TimelineStrip extends LinearLayout {
         cancelThumbnails();current=model;currentSelection=selected;track.removeAllViews();
         scrub.setEnabled(!model.clips.isEmpty());
         audioLane.setText(model.audio==null?"AUDIO • belum ada soundtrack":"AUDIO • "+time(model.audio.start)+" – "+time(model.audio.end())+" • "+model.audio.volume+"%");
+        voiceLane.setText(model.voice==null?"VOICE • belum ada track":"VOICE • "+time(model.voice.start)+" – "+time(model.voice.end())+" • "+model.voice.volume+"%");
+        audioWave.bind(model.audio);voiceWave.bind(model.voice);
         captionLane.setText(model.caption==null?"CAPTION • kosong":"CAPTION • "+time(model.caption.in)+" – "+time(model.caption.out));
         if(model.clips.isEmpty()){status.setText("Timeline kosong");selectionKey="";positionMs=0;scrub.setProgress(0);return;}
         positionMs=Math.max(0,Math.min(positionMs,model.duration()-1));showPosition();
@@ -117,10 +125,27 @@ final class TimelineStrip extends LinearLayout {
             int width=zoom*Math.max(100,Math.min(240,(int)(100+220d*clip.length()/model.duration())));
             cell.addView(StudioUi.text(getContext(),time(start),10,StudioUi.MUTED,false));
             Button tile=StudioUi.button(getContext(),"Klip "+(i+1)+(clip.adjustments.mute?" · Bisu":"")+
-                    (clip.adjustments.hasColor()?" · FX":""),i==selected);
+                    (clip.adjustments.hasColor()?" · FX":"")+(clip.gainStart!=100||clip.gainEnd!=100?" · KF":""),i==selected);
             tile.setContentDescription("Pilih segmen timeline "+(i+1)+", "+time(start)+" sampai "+time(start+clip.length()));
             tile.setSelected(i==selected);
             tile.setOnClickListener(v->select.accept(index));
+            // Local drag only: stable project identity prevents a stale drop from moving a changed draft.
+            tile.setOnLongClickListener(v->v.startDragAndDrop(android.content.ClipData.newPlainText("clip",""),
+                    new android.view.View.DragShadowBuilder(v),new DragToken(model,index),0));
+            cell.setOnDragListener((v,event)->{
+                Object state=event.getLocalState();
+                if(!(state instanceof DragToken)||((DragToken)state).project!=current)return false;
+                switch(event.getAction()){
+                    case android.view.DragEvent.ACTION_DRAG_STARTED:return true;
+                    case android.view.DragEvent.ACTION_DRAG_ENTERED:v.setAlpha(.65f);return true;
+                    case android.view.DragEvent.ACTION_DRAG_EXITED:
+                    case android.view.DragEvent.ACTION_DRAG_ENDED:v.setAlpha(1f);return true;
+                    case android.view.DragEvent.ACTION_DROP:
+                        v.setAlpha(1f);int from=((DragToken)state).index;
+                        if(from!=index)reorder.accept(from,index);return true;
+                    default:return true;
+                }
+            });
             ImageView thumb=new ImageView(getContext());
             thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
             thumb.setBackground(StudioUi.solid(getContext(),StudioUi.INNER,8));
@@ -135,6 +160,10 @@ final class TimelineStrip extends LinearLayout {
                 selectionKey=clip.id;scroll.post(()->{if(cell.getParent()==track)scroll.smoothScrollTo(cell.getLeft(),0);});
             }
         }
+    }
+    private static final class DragToken {
+        final TimelineProject project;final int index;
+        DragToken(TimelineProject p,int i){project=p;index=i;}
     }
     private void showPosition(){
         String value=time(positionMs)+" / "+time(current.duration())+" • "+current.clips.size()+" klip"+

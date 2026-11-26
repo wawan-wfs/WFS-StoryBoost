@@ -30,6 +30,13 @@ public final class TimelineBatchTest {
         bad(()->new TimelineProject.Audio("file:///tmp/x",1000,0,500,0,50));
         bad(()->new TimelineProject.Audio("content://qa/s",1000,0,500,0,101));
         bad(()->split.soundtrack(new TimelineProject.Audio("content://qa/s",2000,0,1000,1500,50)));
+        TimelineProject v=mixed.voiceTrack(new TimelineProject.Audio("content://qa/v",3000,0,1000,1000,30)).keyframes(0,25,125);
+        check(v.voice!=null);check(v.audio==sound);check(v.hasKeyframes());check(v.gainAtUs(0)==.25f);
+        check(Math.abs(v.gainAtUs(500000)-.75f)<.001f);check(v.gainAtUs(1000000)==1);
+        TimelineProject keySplit=v.split(0,1000);check(keySplit.clips.get(0).gainEnd==75);check(keySplit.clips.get(1).gainStart==75);
+        check(keySplit.voice==v.voice);check(keySplit.audio==sound);check(keySplit.move(1,0).clips.get(0).gainStart==75);
+        check(v.duplicate(0).clips.get(1).gainEnd==125);check(v.remove(1).voice==null);check(v.voiceTrack(null).audio==sound);
+        bad(()->v.keyframes(0,0,100));bad(()->v.voiceTrack(new TimelineProject.Audio("content://qa/v",3000,0,1000,1500,30)));
         System.out.println("PASS "+checks+" integrated timeline assertions");
     }
 }

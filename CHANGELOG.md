@@ -1,5 +1,9 @@
 # WFS StoryBoost changelog
 
+## Beta19 integrated candidate — 2026-11-26
+- Beta18 accepted 4/4; adds two independent audio lanes, bounded real PCM waveform, local drag reorder, RGB gain keyframes and selective v4 drafts.
+- Added exact media/runtime and storage tests; new Android acceptance pending. Crossfade and neural model activation remain open.
+
 ## Beta18 integrated candidate — 2026-11-26
 - Timeline scrub, zoom, split and duplicate; separate soundtrack, source trim, start offset, gain and dip-to-black transitions; v3 selective draft schema; shared rendered preview/export and source-aware bitrate.
 - Added bounded asynchronous thumbnail loading, keyboard scrub, host assertions, real interactive UI, v3 process-death and Android PCM/pixel/schema scenarios with mandatory evidence parser. 140 exact-source host assertions and 3 synthetic restoration harness tests pass locally; 8 synthetic reference cases generated. Runtime pending exact-head final batch CI. No AI model activation, crossfade or release claim.

@@ -16,6 +16,22 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void dualTrackAndKeyframesV4RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/a",2000,0,2000))
+                .soundtrack(new TimelineProject.Audio("content://qa/s",3000,0,1000,0,40))
+                .voiceTrack(new TimelineProject.Audio("content://qa/v",3000,500,1500,1000,30)).keyframes(0,25,125);
+            assertTrue(TimelineDraftStore.save(ctx,project));String raw=prefs.getString("draft",null);
+            assertEquals(4,new JSONObject(raw).getInt("version"));TimelineProject got=TimelineDraftStore.load(ctx);
+            assertNotNull(got);assertEquals(25,got.clips.get(0).gainStart);assertEquals(125,got.clips.get(0).gainEnd);
+            assertEquals("content://qa/v",got.voice.uri);assertEquals(30,got.voice.volume);assertEquals(40,got.audio.volume);
+            String bad=raw.replace("\"gainStart\":25","\"gainStart\":151");
+            assertTrue(prefs.edit().putString("draft",bad).commit());assertNull(TimelineDraftStore.load(ctx));
+            assertEquals(bad,prefs.getString("draft",null));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void soundtrackAndFadeV3RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);

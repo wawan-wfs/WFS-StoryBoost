@@ -38,7 +38,7 @@ import java.util.concurrent.Executors;
  */
 public final class StudioMergeActivity extends Activity {
     static final String EXTRA_TIMELINE="one_track_timeline",EXTRA_MIGRATE_URI="timeline_migrate_uri";
-    private static final int PICK_CLIPS=901,PICK_AUDIO=902;
+    private static final int PICK_CLIPS=901,PICK_AUDIO=902,PICK_VOICE=903;
     private long previewGeneration;
     private final ArrayList<Uri> clips=new ArrayList<>();
     private final ExecutorService thumbs=Executors.newSingleThreadExecutor();
@@ -145,7 +145,9 @@ public final class StudioMergeActivity extends Activity {
                 renderedPreview.open(timeline.current());
             });
             gap(body,10);
-            timelineStrip=new TimelineStrip(this,this::select,this::seekTimeline);body.addView(timelineStrip);gap(body,10);
+            timelineStrip=new TimelineStrip(this,this::select,this::seekTimeline,(from,to)->{
+                if(canEditTimeline())editTimeline(timeline.current().move(from,to));
+            });body.addView(timelineStrip);gap(body,10);
             LinearLayout historyBar=row();
             undoTimeline=timelineButton(historyBar,"Undo",()->historyStep(false));
             redoTimeline=timelineButton(historyBar,"Redo",()->historyStep(true));
@@ -164,6 +166,11 @@ public final class StudioMergeActivity extends Activity {
             timelineButton(audioBar,"＋ Audio",this::pickAudio);
             timelineButton(audioBar,"Edit audio",this::editSoundtrack);
             body.addView(audioBar);gap(body,7);
+            LinearLayout voiceBar=row();
+            timelineButton(voiceBar,"＋ Voice",()->pickTrack(true));
+            timelineButton(voiceBar,"Edit voice",()->editTrack(true));
+            timelineButton(voiceBar,"Keyframe",this::editKeyframes);
+            body.addView(voiceBar);gap(body,7);
             adjustTimeline=button("Color Look • Adjust • Audio",true);
             adjustTimeline.setOnClickListener(v->editClipAdjustments());
             body.addView(adjustTimeline,new LinearLayout.LayoutParams(-1,d(48)));gap(body,11);
@@ -221,7 +228,7 @@ public final class StudioMergeActivity extends Activity {
     @Override protected void onActivityResult(int request,int result,Intent data){
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null)return;
-        if(request==PICK_AUDIO&&timelineMode){if(data.getData()!=null)importSoundtrack(data.getData());return;}
+        if((request==PICK_AUDIO||request==PICK_VOICE)&&timelineMode){if(data.getData()!=null)importSoundtrack(data.getData(),request==PICK_VOICE);return;}
         if(request!=PICK_CLIPS)return;
         ArrayList<Uri> incoming=new ArrayList<>();
         if(data.getClipData()!=null){
@@ -361,6 +368,7 @@ public final class StudioMergeActivity extends Activity {
         engine=worker;
         final ArrayList<Uri> sources=new ArrayList<>(clips);
         if(timelineMode&&timeline.current().audio!=null)sources.add(Uri.parse(timeline.current().audio.uri));
+        if(timelineMode&&timeline.current().voice!=null)sources.add(Uri.parse(timeline.current().voice.uri));
         LinearLayout progressCard=StudioUi.card(this,17);
         progressCard.addView(txt("Sedang menggabungkan "+clips.size()+" klip",17,StudioUi.TEXT,true));
         gap(progressCard,12);
@@ -547,13 +555,14 @@ public final class StudioMergeActivity extends Activity {
                     if(canEditTimeline()&&timeline.current()==prior)editTimeline(prior.fade(choices[pending[0]]));
                 }).show();
     }
-    private void pickAudio(){
+    private void pickAudio(){pickTrack(false);}
+    private void pickTrack(boolean voice){
         if(!canEditTimeline()||clips.isEmpty()){toast("Tambahkan video sebelum soundtrack.");return;}
         Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        try{startActivityForResult(pick,PICK_AUDIO);}catch(Exception ex){toast("Pemilih audio tidak tersedia.");}
+        try{startActivityForResult(pick,voice?PICK_VOICE:PICK_AUDIO);}catch(Exception ex){toast("Pemilih audio tidak tersedia.");}
     }
-    private void importSoundtrack(Uri uri){
+    private void importSoundtrack(Uri uri,boolean voice){
         if(!canEditTimeline()||clips.isEmpty())return;
         TimelineProject prior=timeline.current();importing=true;
         try{
@@ -573,17 +582,19 @@ public final class StudioMergeActivity extends Activity {
             runOnUiThread(()->{
                 importing=false;if(destroyed||timeline.current()!=prior)return;
                 if(result==null){toast("Audio tidak valid atau durasi tidak tersedia.");return;}
-                showSoundtrack(prior,result);
+                showSoundtrack(prior,result,voice);
             });
         });
     }
-    private void editSoundtrack(){
+    private void editSoundtrack(){editTrack(false);}
+    private void editTrack(boolean voice){
         if(!canEditTimeline())return;
         TimelineProject prior=timeline.current();
-        if(prior.audio==null){pickAudio();return;}
-        showSoundtrack(prior,prior.audio);
+        TimelineProject.Audio audio=voice?prior.voice:prior.audio;
+        if(audio==null){pickTrack(voice);return;}
+        showSoundtrack(prior,audio,voice);
     }
-    private void showSoundtrack(TimelineProject prior,TimelineProject.Audio audio){
+    private void showSoundtrack(TimelineProject prior,TimelineProject.Audio audio,boolean voice){
         preview.pause();LinearLayout form=StudioUi.card(this,16);
         form.addView(txt("Audio independen • hasil mix tersedia di Preview Timeline",12,StudioUi.MUTED,false));
         EditText in=numberField(form,"Mulai sumber audio (ms)",audio.in);
@@ -591,7 +602,7 @@ public final class StudioMergeActivity extends Activity {
         EditText start=numberField(form,"Posisi di timeline (ms)",audio.start);
         EditText volume=numberField(form,"Volume audio (1–100%)",audio.volume);
         ScrollView scroll=new ScrollView(this);scroll.addView(form);
-        AlertDialog panel=new AlertDialog.Builder(this).setTitle("Soundtrack").setView(scroll)
+        AlertDialog panel=new AlertDialog.Builder(this).setTitle(voice?"Voice track":"Soundtrack").setView(scroll)
                 .setNegativeButton("Batal",null).setNeutralButton("Hapus",null).setPositiveButton("Terapkan",null).show();
         panel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(!canEditTimeline()||timeline.current()!=prior)return;
@@ -599,11 +610,28 @@ public final class StudioMergeActivity extends Activity {
                 TimelineProject.Audio next=new TimelineProject.Audio(audio.uri,audio.duration,
                         Long.parseLong(in.getText().toString()),Long.parseLong(out.getText().toString()),
                         Long.parseLong(start.getText().toString()),Integer.parseInt(volume.getText().toString()));
-                if(editTimeline(prior.soundtrack(next)))panel.dismiss();
+                if(editTimeline(voice?prior.voiceTrack(next):prior.soundtrack(next)))panel.dismiss();
             }catch(IllegalArgumentException ex){toast("Periksa rentang dan volume. "+ex.getMessage());}
         });
         panel.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{
-            if(canEditTimeline()&&timeline.current()==prior&&editTimeline(prior.soundtrack(null)))panel.dismiss();
+            if(canEditTimeline()&&timeline.current()==prior&&editTimeline(voice?prior.voiceTrack(null):prior.soundtrack(null)))panel.dismiss();
+        });
+    }
+    private void editKeyframes(){
+        if(!canEditTimeline()||selected<0)return;
+        final int index=selected;final TimelineProject prior=timeline.current();
+        TimelineProject.Clip clip=prior.clips.get(index);
+        LinearLayout form=StudioUi.card(this,16);
+        form.addView(txt("Animasi gain RGB linear dari awal hingga akhir klip. Hasil di Preview Timeline.",12,StudioUi.MUTED,false));
+        EditText first=numberField(form,"Gain awal (25–150%)",clip.gainStart);
+        EditText last=numberField(form,"Gain akhir (25–150%)",clip.gainEnd);
+        AlertDialog panel=new AlertDialog.Builder(this).setTitle("Keyframe pencahayaan").setView(form)
+                .setNegativeButton("Batal",null).setPositiveButton("Terapkan",null).show();
+        panel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(!canEditTimeline()||timeline.current()!=prior)return;
+            try{if(editTimeline(prior.keyframes(index,Integer.parseInt(first.getText().toString()),
+                    Integer.parseInt(last.getText().toString()))))panel.dismiss();}
+            catch(IllegalArgumentException ex){toast("Gain harus 25–150%.");}
         });
     }
     private void editClipAdjustments(){

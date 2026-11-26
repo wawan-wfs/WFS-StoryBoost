@@ -111,8 +111,8 @@ public final class VideoMergeEngine {
         EditedMediaItemSequence sequence=hasAudio?EditedMediaItemSequence.withAudioAndVideoFrom(items)
                 :EditedMediaItemSequence.withVideoFrom(items);
         ArrayList<EditedMediaItemSequence> sequences=new ArrayList<>();sequences.add(sequence);
-        if(draft.audio!=null){
-            TimelineProject.Audio audio=draft.audio;
+        for(TimelineProject.Audio audio:new TimelineProject.Audio[]{draft.audio,draft.voice}){
+            if(audio==null)continue;
             Uri uri=Uri.parse(audio.uri);
             try{
                 SourceAccess.requireReadable(context,uri);
@@ -137,9 +137,9 @@ public final class VideoMergeEngine {
         }
         Composition.Builder builder=new Composition.Builder(sequences);
         List<Effect> globalEffects=new ArrayList<>();
-        if(draft.fadeMs>0&&draft.clips.size()>1){
+        if(draft.hasKeyframes()||(draft.fadeMs>0&&draft.clips.size()>1)){
             globalEffects.add((androidx.media3.effect.RgbMatrix)(timeUs,useHdr)->{
-                float g=draft.fadeGain(timeUs);
+                float g=draft.fadeGain(timeUs)*draft.gainAtUs(timeUs);
                 return new float[]{g,0,0,0,0,g,0,0,0,0,g,0,0,0,0,1};
             });
         }

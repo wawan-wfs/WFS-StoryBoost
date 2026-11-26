@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta19 candidate
+
+Beta18 accepted 4/4 on API29/35; 399 host checks, decoded independent soundtrack/dip and v3 process recovery. Beta19 dual lane, PCM waveform and keyframes implemented but unverified. Keep 23/32 until distinct roadmap module recount with evidence. See BETA19_QA.md.
+
 ## Beta18 integrated candidate
 
 Beta17 repair accepted run 45758250805 4/4. Beta18 integrated implementation has 140 local timeline assertions and 3 restoration harness tests passing; pending exact-head Android acceptance; roadmap remains 23/32, no CapCut parity claim. See BETA18_QA.md and BETA18_AI_ACCEPTANCE.md.
