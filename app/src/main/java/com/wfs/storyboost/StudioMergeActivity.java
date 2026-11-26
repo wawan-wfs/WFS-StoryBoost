@@ -176,7 +176,7 @@ public final class StudioMergeActivity extends Activity {
             body.addView(adjustTimeline,new LinearLayout.LayoutParams(-1,d(48)));gap(body,11);
         }
         clipList=col();body.addView(clipList);
-        info=txt("Klip akan digabung sesuai urutan. Fade tidak mengubah durasi.",11,StudioUi.MUTED,false);
+        info=txt("Dip-to-black menjaga durasi. Crossfade overlap memendekkan durasi; gunakan Preview Timeline untuk hasil campuran.",11,StudioUi.MUTED,false);
         gap(body,10);body.addView(info);
 
         LinearLayout qualityBar=row();qualityBar.setPadding(d(9),d(8),d(9),d(8));
@@ -545,14 +545,25 @@ public final class StudioMergeActivity extends Activity {
     private void editFade(){
         if(!canEditTimeline()||clips.size()<2){toast("Tambahkan minimal dua klip.");return;}
         final TimelineProject prior=timeline.current();
-        String[] labels={"Cut langsung","Fade 150 ms","Fade 300 ms","Fade 500 ms","Fade 1000 ms"};
-        int[] choices={0,150,300,500,1000};int checked=0;
-        for(int i=0;i<choices.length;i++)if(choices[i]==prior.fadeMs)checked=i;
+        String[] labels={"Cut langsung","Dip-to-black 150 ms","Dip-to-black 300 ms","Dip-to-black 500 ms","Dip-to-black 1000 ms",
+                "Crossfade overlap 150 ms (eksperimental)","Crossfade overlap 300 ms (eksperimental)","Crossfade overlap 500 ms (eksperimental)","Crossfade overlap 1000 ms (eksperimental)"};
+        int[] choices={0,150,300,500,1000,-150,-300,-500,-1000};int checked=0;
+        int active=prior.crossfadeMs>0?-prior.crossfadeMs:prior.fadeMs;
+        for(int i=0;i<choices.length;i++)if(choices[i]==active)checked=i;
         final int[] pending={checked};
-        new AlertDialog.Builder(this).setTitle("Transisi dip-to-black")
+        new AlertDialog.Builder(this).setTitle("Transisi timeline")
                 .setSingleChoiceItems(labels,checked,(d,i)->pending[0]=i)
                 .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(d,w)->{
-                    if(canEditTimeline()&&timeline.current()==prior)editTimeline(prior.fade(choices[pending[0]]));
+                    if(canEditTimeline()&&timeline.current()==prior){
+                        int choice=choices[pending[0]];
+                        TimelineProject next=choice<0?prior.crossfade(-choice):prior.fade(choice);
+                        if(next.duration()<prior.duration())new AlertDialog.Builder(this).setTitle("Durasi timeline memendek")
+                                .setMessage("Crossfade menumpuk klip. Caption dan audio di luar akhir baru akan dipangkas. Undo tersedia.")
+                                .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(confirm,which)->{
+                                    if(canEditTimeline()&&timeline.current()==prior)editTimeline(next);
+                                }).show();
+                        else editTimeline(next);
+                    }
                 }).show();
     }
     private void pickAudio(){pickTrack(false);}

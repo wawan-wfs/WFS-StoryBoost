@@ -16,6 +16,19 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void overlapV6RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/a",2000,0,2000))
+                .append(TimelineProject.Clip.create("content://qa/b",2000,0,2000)).crossfade(500);
+            assertTrue(TimelineDraftStore.save(ctx,project));String raw=prefs.getString("draft",null);
+            assertEquals(6,new JSONObject(raw).getInt("version"));TimelineProject loaded=TimelineDraftStore.load(ctx);
+            assertNotNull(loaded);assertEquals(3500,loaded.duration());assertEquals(1500,loaded.startOf(1));assertEquals(500,loaded.crossfadeMs);
+            String bad=raw.replace("\"crossfadeMs\":500","\"crossfadeMs\":1001");
+            assertTrue(prefs.edit().putString("draft",bad).commit());assertNull(TimelineDraftStore.load(ctx));assertEquals(bad,prefs.getString("draft",null));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void zoomV5RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);

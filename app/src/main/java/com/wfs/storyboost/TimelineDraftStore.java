@@ -14,7 +14,7 @@ import java.util.Collections;
 /** One private, versioned timeline slot. Legacy single-source drafts are independent. */
 final class TimelineDraftStore {
     private static final String PREFS="one-track-timeline",KEY="draft";
-    private static final int VERSION=5,MAX_CHARS=90000;
+    private static final int VERSION=6,MAX_CHARS=90000;
     private TimelineDraftStore(){}
     private static SharedPreferences prefs(Context c){return c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);}
 
@@ -60,7 +60,7 @@ final class TimelineDraftStore {
                 voice=new TimelineProject.Audio(a.getString("uri"),strictLong(a,"duration"),strictLong(a,"inMs"),
                         strictLong(a,"outMs"),strictLong(a,"startMs"),strictInt(a,"volume"));
             }
-            return new TimelineProject(clips,caption,strictInt(j,"quality"),audio,voice,fade);
+            return new TimelineProject(clips,caption,strictInt(j,"quality"),audio,voice,fade,version>=6?strictInt(j,"crossfadeMs"):0);
         }catch(JSONException|IllegalArgumentException|ClassCastException corrupt){return null;}
     }
 
@@ -80,7 +80,7 @@ final class TimelineDraftStore {
 
     static boolean save(Context c,TimelineProject project){
         try{
-            int schema=project.hasZoom()?VERSION:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
+            int schema=project.crossfadeMs>0?VERSION:project.hasZoom()?5:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
             JSONArray entries=new JSONArray();
             for(TimelineProject.Clip clip:project.clips){
                 JSONObject entry=new JSONObject().put("id",clip.id).put("uri",clip.uri)
@@ -95,6 +95,7 @@ final class TimelineDraftStore {
             // Preserve v2 compatibility for projects without new soundtrack/fade data.
             JSONObject doc=new JSONObject().put("version",schema).put("clips",entries)
                     .put("quality",project.quality);
+            if(schema>=6)doc.put("crossfadeMs",project.crossfadeMs);
             if(schema>=3){
                 doc.put("fadeMs",project.fadeMs);
                 if(project.audio!=null){

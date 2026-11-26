@@ -87,7 +87,8 @@ final class TimelineProject {
     }
     final Audio audio,voice;
     /** Fade-through-black on internal cuts; duration is the maximum per side. */
-    final int fadeMs;
+    final int fadeMs,crossfadeMs;
+    final OverlapPlan overlap;
     final List<Clip> clips;
     final Caption caption;
     final int quality;
@@ -99,35 +100,38 @@ final class TimelineProject {
         this(items,caption,quality,audio,null,fadeMs);
     }
     TimelineProject(List<Clip> items,Caption caption,int quality,Audio audio,Audio voice,int fadeMs){
+        this(items,caption,quality,audio,voice,fadeMs,0);
+    }
+    TimelineProject(List<Clip> items,Caption caption,int quality,Audio audio,Audio voice,int fadeMs,int crossfadeMs){
+        if(crossfadeMs<0||crossfadeMs>1000||(crossfadeMs>0&&fadeMs>0))throw new IllegalArgumentException("Pilih satu mode transisi.");
         if(fadeMs<0||fadeMs>1000)throw new IllegalArgumentException("Fade harus 0–1000 ms.");
         if(items.size()>MAX_CLIPS)throw new IllegalArgumentException("Maksimal 10 klip.");
         HashSet<String> ids=new HashSet<>();
         for(Clip c:items)if(!ids.add(c.id))throw new IllegalArgumentException("ID klip duplikat.");
         if(quality<0||quality>2)throw new IllegalArgumentException("Kualitas tidak valid.");
         clips=Collections.unmodifiableList(new ArrayList<>(items));this.quality=quality;
+        this.crossfadeMs=crossfadeMs;overlap=plan(items,crossfadeMs);
         if(caption!=null&&caption.out>duration())throw new IllegalArgumentException("Caption melebihi durasi timeline.");
         if(audio!=null&&audio.end()>duration())throw new IllegalArgumentException("Audio melebihi timeline.");
         if(voice!=null&&voice.end()>duration())throw new IllegalArgumentException("Voice track melebihi timeline.");
         this.caption=caption;this.audio=audio;this.voice=voice;this.fadeMs=fadeMs;
     }
     static TimelineProject empty(){return new TimelineProject(Collections.emptyList(),null,1);}
-    long duration(){long end=0;for(Clip c:clips)end+=c.length();return end;}
+    private static OverlapPlan plan(List<Clip> items,int ms){long[] lengths=new long[items.size()];for(int i=0;i<lengths.length;i++)lengths[i]=items.get(i).length();return new OverlapPlan(lengths,ms);}
+    long duration(){return overlap.duration;}
     /** Half-open timeline intervals. At an exact cut, ownership starts in the next clip. */
     int clipIndexAt(long timelineMs){
-        if(timelineMs<0)return -1;
-        long end=0;
-        for(int i=0;i<clips.size();i++){
-            end+=clips.get(i).length();
-            if(timelineMs<end)return i;
-        }
-        return -1;
+        return overlap.dominant(timelineMs);
     }
     private TimelineProject withClips(List<Clip> items){
-        long end=0;for(Clip c:items)end+=c.length();
+        return fitProject(items,fadeMs,crossfadeMs);
+    }
+    private TimelineProject fitProject(List<Clip> items,int dip,int cross){
+        long end=plan(items,cross).duration;
         Caption next=caption;
         if(next!=null&&next.in>=end)next=null;
         else if(next!=null&&next.out>end)next=new Caption(next.text,next.in,end,next.color);
-        return new TimelineProject(items,next,quality,audio==null?null:audio.fit(end),voice==null?null:voice.fit(end),fadeMs);
+        return new TimelineProject(items,next,quality,audio==null?null:audio.fit(end),voice==null?null:voice.fit(end),dip,cross);
     }
     TimelineProject append(Clip clip){List<Clip> next=new ArrayList<>(clips);next.add(clip);return withClips(next);}
     TimelineProject remove(int index){List<Clip> next=new ArrayList<>(clips);next.remove(index);return withClips(next);}
@@ -141,18 +145,19 @@ final class TimelineProject {
     }
     long startOf(int index){
         if(index<0||index>=clips.size())throw new IllegalArgumentException("Klip tidak tersedia.");
-        long start=0;for(int i=0;i<index;i++)start+=clips.get(i).length();return start;
+        return overlap.starts[index];
     }
     TimelineProject adjust(int index,ClipAdjustments next){
         Clip clip=clips.get(index),edited=clip.adjust(next);
         if(clip==edited)return this;
         List<Clip> items=new ArrayList<>(clips);items.set(index,edited);return withClips(items);
     }
-    TimelineProject caption(Caption c){return new TimelineProject(clips,c,quality,audio,voice,fadeMs);}
-    TimelineProject quality(int mode){return mode==quality?this:new TimelineProject(clips,caption,mode,audio,voice,fadeMs);}
-    TimelineProject soundtrack(Audio next){return next==audio?this:new TimelineProject(clips,caption,quality,next,voice,fadeMs);}
-    TimelineProject voiceTrack(Audio next){return next==voice?this:new TimelineProject(clips,caption,quality,audio,next,fadeMs);}
-    TimelineProject fade(int ms){return ms==fadeMs?this:new TimelineProject(clips,caption,quality,audio,voice,ms);}
+    TimelineProject caption(Caption c){return new TimelineProject(clips,c,quality,audio,voice,fadeMs,crossfadeMs);}
+    TimelineProject quality(int mode){return mode==quality?this:new TimelineProject(clips,caption,mode,audio,voice,fadeMs,crossfadeMs);}
+    TimelineProject soundtrack(Audio next){return next==audio?this:new TimelineProject(clips,caption,quality,next,voice,fadeMs,crossfadeMs);}
+    TimelineProject voiceTrack(Audio next){return next==voice?this:new TimelineProject(clips,caption,quality,audio,next,fadeMs,crossfadeMs);}
+    TimelineProject fade(int ms){return ms==fadeMs&&crossfadeMs==0?this:fitProject(clips,ms,0);}
+    TimelineProject crossfade(int ms){return ms==crossfadeMs&&fadeMs==0?this:fitProject(clips,0,ms);}
     TimelineProject keyframes(int index,int start,int end){
         Clip old=clips.get(index),edited=old.keyframes(start,end);
         if(old==edited)return this;

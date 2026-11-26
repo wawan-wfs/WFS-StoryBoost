@@ -20,6 +20,8 @@ javac -d "$TMP" "$ROOT/app/src/main/java/com/wfs/storyboost/AspectRatioProfile.j
   "$ROOT/app/src/main/java/com/wfs/storyboost/QualityAdvisor.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/VideoPassthrough.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/ClipAdjustments.java" \
+  "$ROOT/app/src/main/java/com/wfs/storyboost/OverlapPlan.java" \
+  "$ROOT/tests/OverlapPlanTest.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/TimelineProject.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/TimelinePreviewCache.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/TimelineNavigation.java" \
@@ -31,3 +33,4 @@ java -cp "$TMP" com.wfs.storyboost.TimelineProjectTest
 java -cp "$TMP" com.wfs.storyboost.TimelinePreviewCacheTest
 java -cp "$TMP" com.wfs.storyboost.TimelineBatchTest
 java -cp "$TMP" com.wfs.storyboost.PcmToneProbeTest
+java -cp "$TMP" com.wfs.storyboost.OverlapPlanTest

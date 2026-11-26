@@ -154,7 +154,7 @@ final class TimelineStrip extends LinearLayout {
             cell.addView(thumb,new LayoutParams(-1,dp(56)));
             requestThumbnail(clip,thumb);
             cell.addView(tile,new LayoutParams(-1,dp(48)));
-            cell.addView(StudioUi.text(getContext(),time(clip.length()),10,StudioUi.MUTED,false));
+            cell.addView(StudioUi.text(getContext(),time(clip.length())+(model.overlap.fadeIn(i)>0?" • overlap "+model.overlap.fadeIn(i)+"ms":""),10,StudioUi.MUTED,false));
             LayoutParams p=new LayoutParams(dp(width),-2);p.rightMargin=dp(6);track.addView(cell,p);
             if(i==selected&&!clip.id.equals(selectionKey)){
                 selectionKey=clip.id;scroll.post(()->{if(cell.getParent()==track)scroll.smoothScrollTo(cell.getLeft(),0);});
@@ -167,7 +167,7 @@ final class TimelineStrip extends LinearLayout {
     }
     private void showPosition(){
         String value=time(positionMs)+" / "+time(current.duration())+" • "+current.clips.size()+" klip"+
-                (current.fadeMs>0?" • Fade "+current.fadeMs+" ms":"");
+                (current.crossfadeMs>0?" • Crossfade "+current.crossfadeMs+" ms":current.fadeMs>0?" • Dip "+current.fadeMs+" ms":"");
         if(!value.contentEquals(status.getText()))status.setText(value);
     }
     long currentPosition(){return positionMs;}
