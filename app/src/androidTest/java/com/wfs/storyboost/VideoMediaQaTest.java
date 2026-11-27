@@ -667,6 +667,59 @@ public class VideoMediaQaTest {
         }finally{TimelineDraftStore.clear(ctx);}
     }
     @Test(timeout=600000)
+    public void timelineTwoIndependentPicturesDecodedAndMissingSource()throws Exception{
+        Uri red=importFixture("qa-crossfade-red.mp4"),blue=importFixture("qa-crossfade-blue.mp4"),
+            top=importFixture("qa-crossfade-red.mp4");
+        byte[] shaRed=hashSource(red),shaBlue=hashSource(blue),shaTop=hashSource(top);
+        TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(red.toString(),2000,0,2000))
+            .picture(new PictureLayer(blue.toString(),2000,0,1500,250,60,100,0,0,0,0))
+            .picture2(new PictureLayer(top.toString(),2000,0,1000,500,40,50,0,0,0,0));
+        File output=null,preview=null;
+        try{
+            output=renderAdjusted(project,false,280,null);preview=renderAdjusted(project,true,280,null);
+            for(File file:new File[]{output,preview}){
+                MediaProbe.Info info=MediaProbe.inspect(file);assertTrue(info.video&&info.audio);assertTrue(Math.abs(info.durationMs-2000)<=250);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file);
+                assertTrue(pcm.firstTones.tone440()>.05&&pcm.firstTones.tone780()<.01&&pcm.overlapTones.tone440()>.05&&pcm.overlapTones.tone780()<.01);
+                int r,b,lower,background,after;
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    int mixed=sampleColor(reader,1000000,.2,.2);
+                    r=android.graphics.Color.red(mixed);b=android.graphics.Color.blue(mixed);
+                    lower=sampleColor(reader,1000000,.5,.5);
+                    background=sampleColor(reader,1000000,.85,.85);
+                    after=sampleColor(reader,1900000,.2,.2);
+                }
+                int lowBlue=android.graphics.Color.blue(lower),baseRed=android.graphics.Color.red(background),afterRed=android.graphics.Color.red(after);
+                android.util.Log.i("WfsTimelinePreviewQA","twoPipObserved blend="+r+","+b+" lower="+lowBlue+" base="+baseRed+" after="+afterRed);
+                assertTrue("Top layer must blend over lower layer",r>75&&r<180&&b>75&&b<180);
+                assertTrue(lowBlue>200&&android.graphics.Color.red(lower)<30);
+                assertTrue(baseRed>200&&android.graphics.Color.blue(background)<30&&afterRed>200&&android.graphics.Color.blue(after)<30);
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+                android.util.Log.i("WfsTimelinePreviewQA","twoPipVerified red="+r+" blue="+b+" lowerBlue="+lowBlue+" baseRed="+baseRed+" afterRed="+afterRed);
+            }
+            assertArrayEquals(shaRed,hashSource(red));assertArrayEquals(shaBlue,hashSource(blue));assertArrayEquals(shaTop,hashSource(top));
+            assertEquals(1,ctx.getContentResolver().delete(top,null,null));
+            java.util.Set<File> before=previewFiles();int[] calls={0};
+            inst.runOnMainSync(()->{
+                VideoMergeEngine worker=new VideoMergeEngine();
+                VideoMergeEngine.Listener listener=new VideoMergeEngine.Listener(){
+                    public void onCompleted(File f){calls[0]++;}
+                    public void onFailure(String reason){calls[0]++;}
+                };
+                for(boolean privatePreview:new boolean[]{false,true}){
+                    try{
+                        if(privatePreview)worker.startTimelinePreview(ctx,project,listener);else worker.startTimeline(ctx,project,listener);
+                        fail("Deleted PiP 2 must fail closed");
+                    }catch(IllegalArgumentException expected){assertTrue(expected.getMessage().contains("PiP"));}
+                }
+                worker.cancel();
+            });
+            inst.waitForIdleSync();assertEquals(0,calls[0]);assertEquals(before,previewFiles());
+            assertArrayEquals(shaRed,hashSource(red));assertArrayEquals(shaBlue,hashSource(blue));
+        }finally{if(output!=null)output.delete();if(preview!=null)preview.delete();}
+    }
+    @Test(timeout=600000)
     public void timelineMixedCutsAndPictureLayerDecodedProof()throws Exception{
         Uri red=importFixture("qa-crossfade-red.mp4"),blue=importFixture("qa-crossfade-blue.mp4");
         byte[] hashRed=hashSource(red),hashBlue=hashSource(blue);

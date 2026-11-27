@@ -92,7 +92,8 @@ public final class ProcessDeathTimelineTest {
         edited=edited.soundtrack(new TimelineProject.Audio(second.toString(),MediaProbe.duration(app(),second),500,1000,250,40)).fade(150)
                 .voiceTrack(new TimelineProject.Audio(second.toString(),MediaProbe.duration(app(),second),500,1000,750,35))
                 .keyframes(1,40,120).zoom(1,60,140)
-                .picture(new PictureLayer(second.toString(),MediaProbe.duration(app(),second),500,1000,250,40,80,0,0,100,100));
+                .picture(new PictureLayer(second.toString(),MediaProbe.duration(app(),second),500,1000,250,40,80,0,0,100,100,PictureLayer.SMOOTH,500))
+                .picture2(new PictureLayer(first.toString(),MediaProbe.duration(app(),first),125,625,350,30,60,100,0,0,100,PictureLayer.EASE_IN,500));
         String firstId=edited.clips.get(0).id,secondId=edited.clips.get(1).id;
         assertTrue(TimelineDraftStore.save(app(),edited));
         ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen());
@@ -154,6 +155,7 @@ public final class ProcessDeathTimelineTest {
             assertEquals(40,saved.clips.get(0).gainStart);assertEquals(120,saved.clips.get(0).gainEnd);
             assertEquals(60,saved.clips.get(0).zoomStart);assertEquals(140,saved.clips.get(0).zoomEnd);
             assertNotNull(saved.picture);assertEquals(second.toString(),saved.picture.uri);assertEquals(250,saved.picture.start);assertEquals(80,saved.picture.opacity);assertEquals(100,saved.picture.xEnd);
+            assertEquals(PictureLayer.SMOOTH,saved.picture.curve);assertNotNull(saved.picture2);assertEquals(first.toString(),saved.picture2.uri);assertEquals(350,saved.picture2.start);assertEquals(PictureLayer.EASE_IN,saved.picture2.curve);assertEquals(500,saved.picture2.motionDuration);
             assertEquals(p.getString("shaA",""),sha(first));assertEquals(p.getString("shaB",""),sha(second));
             assertEquals("Migrasi",StudioDraftStore.load(app(),first).options.caption);
             try(ActivityScenario<StudioMergeActivity> ui=ActivityScenario.launch(screen())){

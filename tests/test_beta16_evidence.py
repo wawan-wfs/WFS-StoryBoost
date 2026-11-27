@@ -28,11 +28,13 @@ class EvidenceTest(unittest.TestCase):
         self.metrics+="\n"+mixed+"\n"+mixed+"\n"+"\n".join(
             f"I/WfsTimelinePreviewQA: hdBenchmarkVerified seconds={s} mode={m} elapsedMs=1000 bytes=4096 videoBitrate=4000000 sampledPssKb=20000 frames={s*24} driftMs=15"
             for s in (2,10,30) for m in ("preview","export"))
+        two="I/WfsTimelinePreviewQA: twoPipVerified red=128 blue=127 lowerBlue=253 baseRed=253 afterRed=253"
+        self.metrics+="\n"+two+"\n"+two
         self.log.write_text(self.metrics)
         self.write_xml()
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
-        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip","cutAndCurveV8RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
+        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip","cutAndCurveV8RoundTrip","twoPicturesV9RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
                  for n, tag in zip(qa.REQUIRED, (first, second) + ("",)*(len(qa.REQUIRED)-2))]
         for i,n in enumerate(qa.REQUIRED[:len(cases)]):
             if n in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility","tiledModelsPreserveSeamsAndBoundedPreview"):
@@ -171,6 +173,11 @@ class EvidenceTest(unittest.TestCase):
         self.log.write_text(self.metrics.replace("hdBenchmarkVerified","missing"))
         with self.assertRaisesRegex(ValueError,"HD benchmark"):
             self.check(35)
+    def test_missing_second_layer(self):
+        self.log.write_text(self.metrics.replace("lowerBlue=253","lowerBlue=0"))
+        with self.assertRaisesRegex(ValueError,"two-PiP"):
+            self.check()
+
     def test_wrong_api(self):
         with self.assertRaisesRegex(ValueError, "API29/35"):
             self.check(34)

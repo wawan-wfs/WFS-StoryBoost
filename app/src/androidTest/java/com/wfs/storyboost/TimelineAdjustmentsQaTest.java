@@ -16,6 +16,24 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void twoPicturesV9RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject base=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/a",2000,0,2000));
+            PictureLayer one=new PictureLayer("content://qa/p",2000,0,1000,500,40,80,0,0,100,100);
+            PictureLayer two=new PictureLayer("content://qa/q",2000,0,1000,250,30,60,100,0,0,100,PictureLayer.EASE_OUT,1000);
+            TimelineProject project=base.picture(one).picture2(two);
+            assertTrue(TimelineDraftStore.save(ctx,project));String raw=prefs.getString("draft",null);
+            assertEquals(9,new JSONObject(raw).getInt("version"));TimelineProject loaded=TimelineDraftStore.load(ctx);
+            assertNotNull(loaded);assertEquals("content://qa/q",loaded.picturesTopFirst().get(0).uri);
+            assertEquals("content://qa/p",loaded.picturesTopFirst().get(1).uri);assertEquals(PictureLayer.EASE_OUT,loaded.picture2.curve);
+            JSONObject bad=new JSONObject(raw);bad.getJSONObject("picture2").put("opacity",101);
+            assertTrue(prefs.edit().putString("draft",bad.toString()).commit());assertNull(TimelineDraftStore.load(ctx));
+            assertTrue(TimelineDraftStore.save(ctx,project.picture(null)));loaded=TimelineDraftStore.load(ctx);assertNotNull(loaded);assertNull(loaded.picture);assertNotNull(loaded.picture2);
+            assertTrue(TimelineDraftStore.save(ctx,project.picture2(null)));assertEquals(7,new JSONObject(prefs.getString("draft",null)).getInt("version"));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void cutAndCurveV8RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
