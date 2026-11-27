@@ -112,11 +112,29 @@ final class OverlapComposition {
         }
         return result;
     }
-    static VideoCompositorSettings settings(OverlapPlan plan,int width,int height){
+    static EditedMediaItemSequence pictureSequence(Context context,PictureLayer layer,long total,int width,int height,int fps)throws java.io.IOException{
+        Uri padding=black(context);
+        EditedMediaItemSequence.Builder sequence=new EditedMediaItemSequence.Builder(Collections.singleton(C.TRACK_TYPE_VIDEO));
+        if(layer.start>0)sequence.addItem(pad(padding,layer.start,width,height,fps));
+        MediaItem media=new MediaItem.Builder().setUri(Uri.parse(layer.uri))
+                .setClippingConfiguration(new MediaItem.ClippingConfiguration.Builder().setStartPositionMs(layer.in).setEndPositionMs(layer.out).build()).build();
+        sequence.addItem(new EditedMediaItem.Builder(media).setRemoveAudio(true)
+                .setEffects(new Effects(Collections.emptyList(),Collections.singletonList(canvas(width,height)))).build());
+        if(layer.end()<total)sequence.addItem(pad(padding,total-layer.end(),width,height,fps));
+        return sequence.build();
+    }
+    static VideoCompositorSettings settings(OverlapPlan plan,int width,int height,PictureLayer picture,boolean crossfade){
         return new VideoCompositorSettings(){
             @Override public Size getOutputSize(List<Size> inputs){return new Size(width,height);}
             @Override public OverlaySettings getOverlaySettings(int inputId,long timeUs){
-                return new StaticOverlaySettings.Builder().setAlphaScale(inputId==0?plan.alphaTop(timeUs):1f).build();
+                if(picture!=null&&inputId==0){
+                    float scale=picture.scale/100f;
+                    return new StaticOverlaySettings.Builder().setScale(scale,scale)
+                            .setBackgroundFrameAnchor(picture.anchorX(timeUs),picture.anchorY(timeUs))
+                            .setAlphaScale(picture.visible(timeUs)?picture.opacity/100f:0f).build();
+                }
+                int baseId=inputId-(picture==null?0:1);
+                return new StaticOverlaySettings.Builder().setAlphaScale(crossfade&&baseId==0?plan.alphaTop(timeUs):1f).build();
             }
         };
     }

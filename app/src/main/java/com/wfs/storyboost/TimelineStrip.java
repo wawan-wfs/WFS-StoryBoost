@@ -31,7 +31,7 @@ final class TimelineStrip extends LinearLayout {
     private final TextView audioLane,voiceLane;
     private final AudioWaveformView audioWave,voiceWave;
     private final java.util.function.BiConsumer<Integer,Integer> reorder;
-    private final TextView captionLane;
+    private final TextView captionLane,pictureLane;
     private TimelineProject current=TimelineProject.empty();
     private int currentSelection=-1,zoom=1;
     private long positionMs;
@@ -101,9 +101,11 @@ final class TimelineStrip extends LinearLayout {
         audioLane=StudioUi.text(context,"AUDIO • belum ada soundtrack",12,StudioUi.GREEN,true);
         voiceLane=StudioUi.text(context,"VOICE • belum ada track",12,StudioUi.CYAN,true);
         audioWave=new AudioWaveformView(context);voiceWave=new AudioWaveformView(context);
+        pictureLane=StudioUi.text(context,"PIP • belum ada overlay",12,StudioUi.LAVENDER,true);
         captionLane=StudioUi.text(context,"CAPTION • kosong",11,StudioUi.LAVENDER,true);
         StudioUi.gap(this,context,10);addView(audioLane);addView(audioWave,new LayoutParams(-1,dp(38)));
         StudioUi.gap(this,context,8);addView(voiceLane);addView(voiceWave,new LayoutParams(-1,dp(38)));
+        StudioUi.gap(this,context,8);addView(pictureLane);
         StudioUi.gap(this,context,8);addView(captionLane);
     }
     private int dp(int n){return StudioUi.dp(getContext(),n);}
@@ -114,6 +116,7 @@ final class TimelineStrip extends LinearLayout {
         audioLane.setText(model.audio==null?"AUDIO • belum ada soundtrack":"AUDIO • "+time(model.audio.start)+" – "+time(model.audio.end())+" • "+model.audio.volume+"%");
         voiceLane.setText(model.voice==null?"VOICE • belum ada track":"VOICE • "+time(model.voice.start)+" – "+time(model.voice.end())+" • "+model.voice.volume+"%");
         audioWave.bind(model.audio,model.duration());voiceWave.bind(model.voice,model.duration());
+        pictureLane.setText(model.picture==null?"PIP • belum ada overlay":"PIP • "+time(model.picture.start)+" – "+time(model.picture.end())+" • "+model.picture.scale+"% • opacity "+model.picture.opacity+"%");
         captionLane.setText(model.caption==null?"CAPTION • kosong":"CAPTION • "+time(model.caption.in)+" – "+time(model.caption.out));
         if(model.clips.isEmpty()){status.setText("Timeline kosong");selectionKey="";positionMs=0;scrub.setProgress(0);return;}
         positionMs=Math.max(0,Math.min(positionMs,model.duration()-1));showPosition();

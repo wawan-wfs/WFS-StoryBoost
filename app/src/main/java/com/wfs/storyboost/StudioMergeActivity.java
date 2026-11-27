@@ -38,7 +38,7 @@ import java.util.concurrent.Executors;
  */
 public final class StudioMergeActivity extends Activity {
     static final String EXTRA_TIMELINE="one_track_timeline",EXTRA_MIGRATE_URI="timeline_migrate_uri";
-    private static final int PICK_CLIPS=901,PICK_AUDIO=902,PICK_VOICE=903;
+    private static final int PICK_CLIPS=901,PICK_AUDIO=902,PICK_VOICE=903,PICK_PICTURE=904;
     private long previewGeneration;
     private final ArrayList<Uri> clips=new ArrayList<>();
     private final ExecutorService thumbs=Executors.newSingleThreadExecutor();
@@ -171,6 +171,10 @@ public final class StudioMergeActivity extends Activity {
             timelineButton(voiceBar,"Edit voice",()->editTrack(true));
             timelineButton(voiceBar,"Keyframe",this::editKeyframes);
             body.addView(voiceBar);gap(body,7);
+            LinearLayout pictureBar=row();
+            timelineButton(pictureBar,"＋ PiP",this::pickPicture);
+            timelineButton(pictureBar,"Edit PiP",this::editPicture);
+            body.addView(pictureBar);gap(body,7);
             adjustTimeline=button("Color Look • Adjust • Audio",true);
             adjustTimeline.setOnClickListener(v->editClipAdjustments());
             body.addView(adjustTimeline,new LinearLayout.LayoutParams(-1,d(48)));gap(body,11);
@@ -229,6 +233,7 @@ public final class StudioMergeActivity extends Activity {
         super.onActivityResult(request,result,data);
         if(result!=RESULT_OK||data==null)return;
         if((request==PICK_AUDIO||request==PICK_VOICE)&&timelineMode){if(data.getData()!=null)importSoundtrack(data.getData(),request==PICK_VOICE);return;}
+        if(request==PICK_PICTURE&&timelineMode){if(data.getData()!=null)importPicture(data.getData());return;}
         if(request!=PICK_CLIPS)return;
         ArrayList<Uri> incoming=new ArrayList<>();
         if(data.getClipData()!=null){
@@ -369,6 +374,7 @@ public final class StudioMergeActivity extends Activity {
         final ArrayList<Uri> sources=new ArrayList<>(clips);
         if(timelineMode&&timeline.current().audio!=null)sources.add(Uri.parse(timeline.current().audio.uri));
         if(timelineMode&&timeline.current().voice!=null)sources.add(Uri.parse(timeline.current().voice.uri));
+        if(timelineMode&&timeline.current().picture!=null)sources.add(Uri.parse(timeline.current().picture.uri));
         LinearLayout progressCard=StudioUi.card(this,17);
         progressCard.addView(txt("Sedang menggabungkan "+clips.size()+" klip",17,StudioUi.TEXT,true));
         gap(progressCard,12);
@@ -626,6 +632,63 @@ public final class StudioMergeActivity extends Activity {
         });
         panel.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{
             if(canEditTimeline()&&timeline.current()==prior&&editTimeline(voice?prior.voiceTrack(null):prior.soundtrack(null)))panel.dismiss();
+        });
+    }
+    private void pickPicture(){
+        if(!canEditTimeline()||clips.isEmpty()){toast("Tambahkan video utama dahulu.");return;}
+        Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("video/*")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        try{startActivityForResult(pick,PICK_PICTURE);}catch(Exception ex){toast("Pemilih video tidak tersedia.");}
+    }
+    private void importPicture(Uri uri){
+        if(!canEditTimeline()||clips.isEmpty())return;
+        TimelineProject prior=timeline.current();importing=true;
+        try{if(!TimelineDraftStore.hasReadGrant(this,uri))getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}
+        catch(Exception ex){importing=false;toast("Izin PiP tidak dapat disimpan.");return;}
+        thumbs.execute(()->{
+            PictureLayer candidate=null;
+            try{
+                SourceAccess.requireReadable(this,uri);MediaProbe.Info info=MediaProbe.inspect(this,uri);
+                long duration=MediaProbe.duration(this,uri);
+                if(info.video&&!info.isHdr()&&duration>0&&duration<=TimelineProject.MAX_SOURCE_MS)
+                    candidate=new PictureLayer(uri.toString(),duration,0,Math.min(duration,prior.duration()),0,35,100,90,10,90,10);
+            }catch(Exception ignored){}
+            PictureLayer ready=candidate;
+            runOnUiThread(()->{importing=false;if(destroyed||timeline.current()!=prior)return;
+                if(ready==null){toast("Video PiP SDR tidak valid.");return;}showPicture(prior,ready);});
+        });
+    }
+    private void editPicture(){
+        if(!canEditTimeline())return;
+        TimelineProject prior=timeline.current();if(prior.picture==null){pickPicture();return;}showPicture(prior,prior.picture);
+    }
+    private void showPicture(TimelineProject prior,PictureLayer picture){
+        preview.pause();LinearLayout form=StudioUi.card(this,16);
+        form.addView(txt("Layer video bisu independen. Posisi 0–100 dari kiri/atas ke kanan/bawah. Gunakan Preview Timeline.",12,StudioUi.MUTED,false));
+        EditText in=numberField(form,"PiP mulai sumber (ms)",picture.in);
+        EditText out=numberField(form,"PiP akhir sumber (ms)",picture.out);
+        EditText start=numberField(form,"PiP posisi timeline (ms)",picture.start);
+        EditText scale=numberField(form,"PiP ukuran (20–60%)",picture.scale);
+        EditText opacity=numberField(form,"PiP opacity (25–100%)",picture.opacity);
+        EditText xs=numberField(form,"PiP X awal (0–100)",picture.xStart);
+        EditText ys=numberField(form,"PiP Y awal (0–100)",picture.yStart);
+        EditText xe=numberField(form,"PiP X akhir (0–100)",picture.xEnd);
+        EditText ye=numberField(form,"PiP Y akhir (0–100)",picture.yEnd);
+        ScrollView scroll=new ScrollView(this);scroll.addView(form);
+        AlertDialog panel=new AlertDialog.Builder(this).setTitle("Picture-in-picture").setView(scroll)
+                .setNegativeButton("Batal",null).setNeutralButton("Hapus",null).setPositiveButton("Terapkan",null).show();
+        panel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
+            if(!canEditTimeline()||timeline.current()!=prior)return;
+            try{
+                PictureLayer next=new PictureLayer(picture.uri,picture.duration,Long.parseLong(in.getText().toString()),
+                    Long.parseLong(out.getText().toString()),Long.parseLong(start.getText().toString()),Integer.parseInt(scale.getText().toString()),
+                    Integer.parseInt(opacity.getText().toString()),Integer.parseInt(xs.getText().toString()),Integer.parseInt(ys.getText().toString()),
+                    Integer.parseInt(xe.getText().toString()),Integer.parseInt(ye.getText().toString()));
+                if(editTimeline(prior.picture(next)))panel.dismiss();
+            }catch(IllegalArgumentException ex){toast("Periksa durasi, ukuran, posisi dan opacity PiP.");}
+        });
+        panel.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->{
+            if(canEditTimeline()&&timeline.current()==prior&&editTimeline(prior.picture(null)))panel.dismiss();
         });
     }
     private void editKeyframes(){

@@ -16,6 +16,20 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void pictureV7RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/a",2000,0,2000))
+                .picture(new PictureLayer("content://qa/p",2000,0,1000,500,40,80,0,0,100,100));
+            assertTrue(TimelineDraftStore.save(ctx,project));String raw=prefs.getString("draft",null);
+            assertEquals(7,new JSONObject(raw).getInt("version"));TimelineProject loaded=TimelineDraftStore.load(ctx);
+            assertNotNull(loaded);assertNotNull(loaded.picture);assertEquals(500,loaded.picture.start);
+            assertEquals(40,loaded.picture.scale);assertEquals(80,loaded.picture.opacity);assertEquals(100,loaded.picture.xEnd);
+            String bad=raw.replace("\"scale\":40","\"scale\":99");
+            assertTrue(prefs.edit().putString("draft",bad).commit());assertNull(TimelineDraftStore.load(ctx));assertEquals(bad,prefs.getString("draft",null));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void overlapV6RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);

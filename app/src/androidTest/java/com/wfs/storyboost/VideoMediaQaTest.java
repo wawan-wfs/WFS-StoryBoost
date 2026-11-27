@@ -667,6 +667,46 @@ public class VideoMediaQaTest {
         }finally{TimelineDraftStore.clear(ctx);}
     }
     @Test(timeout=300000)
+    public void timelinePictureLayerRendersRealMovingOverlay()throws Exception{
+        Uri red=importFixture("qa-crossfade-red.mp4"),blue=importFixture("qa-crossfade-blue.mp4");
+        byte[] a=hashSource(red),b=hashSource(blue);
+        TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(red.toString(),2000,0,2000))
+                .picture(new PictureLayer(blue.toString(),2000,0,1000,500,40,100,0,0,100,100));
+        File output=null,preview=null;
+        try{
+            output=renderAdjusted(project,false);preview=renderAdjusted(project,true);
+            for(File file:new File[]{output,preview}){
+                MediaProbe.Info info=MediaProbe.inspect(file);assertTrue(info.video&&info.audio);assertTrue(Math.abs(info.durationMs-2000)<=250);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file);
+                assertTrue(pcm.firstTones.tone440()>.05&&pcm.firstTones.tone780()<.01&&pcm.overlapTones.tone440()>.05&&pcm.overlapTones.tone780()<.01);
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    double[] cx=new double[4],cy=new double[4];int[] count=new int[4];
+                    long[] times={250000,650000,1350000,1750000};
+                    for(int i=0;i<4;i++){
+                        android.graphics.Bitmap frame=reader.getFrameAtTime(times[i],MediaMetadataRetriever.OPTION_CLOSEST);assertNotNull(frame);
+                        try{
+                            for(int y=0;y<frame.getHeight();y+=2)for(int x=0;x<frame.getWidth();x+=2){
+                                int color=frame.getPixel(x,y);
+                                if(android.graphics.Color.blue(color)>180&&android.graphics.Color.red(color)<50){
+                                    count[i]++;cx[i]+=x/(double)frame.getWidth();cy[i]+=y/(double)frame.getHeight();
+                                }
+                            }
+                            if(count[i]>0){cx[i]/=count[i];cy[i]/=count[i];}
+                        }finally{frame.recycle();}
+                    }
+                    android.util.Log.i("WfsTimelinePreviewQA","pipObserved count="+java.util.Arrays.toString(count)+" x="+java.util.Arrays.toString(cx)+" y="+java.util.Arrays.toString(cy));
+                    assertEquals("Overlay before start",0,count[0]);assertEquals("Overlay after end",0,count[3]);
+                    assertTrue(count[1]>500&&count[2]>500);
+                    assertTrue("PiP must move diagonally",cx[2]-cx[1]>.25&&cy[2]-cy[1]>.25);
+                    android.util.Log.i("WfsTimelinePreviewQA","pipVerified before="+count[0]+" early="+count[1]+" late="+count[2]+" after="+count[3]+" dx="+(cx[2]-cx[1])+" dy="+(cy[2]-cy[1]));
+                }
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+            }
+            assertArrayEquals(a,hashSource(red));assertArrayEquals(b,hashSource(blue));
+        }finally{if(output!=null)output.delete();if(preview!=null)preview.delete();}
+    }
+    @Test(timeout=300000)
     public void timelineCrossfadeRendersOverlappingVideoAndAudio()throws Exception{
         Uri a=importFixture("qa-crossfade-red.mp4"),b=importFixture("qa-crossfade-blue.mp4");
         byte[] shaA=hashSource(a),shaB=hashSource(b);
