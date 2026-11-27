@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta24 integrated candidate
+
+Beta22 and Beta23 both 3/4 at checkpoint, API35 entire job PASS. Added second overlay, per-cut visual easing, v9 recovery/revocation tests, strength control and native Full HD benchmark matrix. Local exact-class numeric checks passed; new device gates pending. Roadmap remains 23/32 pending independent recount. See BETA24_QA.md.
+
 ## Beta23 integrated candidate
 
 Per-cut v8, PiP motion curves, direct scrub, tiled restoration and mandatory combined compositor and HD device benchmarks implemented. Standalone exact-source host tests passed. Beta22 build/smoke passed, connected pending at checkpoint. Roadmap 23/32 unchanged pending recount. See BETA23_QA.md.

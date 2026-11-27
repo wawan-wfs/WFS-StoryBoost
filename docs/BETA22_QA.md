@@ -15,3 +15,6 @@ Baseline Beta20 34297dd0218f838d996a3903286c4dbfe52badbd 4/4 run 45847642066. Be
 
 ## CI 45944921050 checkpoint during Beta23 development
 Exact commit c62579af920faba8d5e1529a1c84061bf5fde37b. Build and API35 installation/launch completed success. Build reports 159 aspect, 62 timeline, 12 cache, 165 integrated timeline, 50 tone, 35141 overlap, 278 restoration, 36187 PiP assertions; 26 evidence parser tests, 5 wrapper tests, 3 restoration benchmark tests, 6 screenshot verifier tests. Both API29/35 connected jobs in progress; no new runtime failure available at this checkpoint. APKs exist but full acceptance not yet proven.
+
+## Beta24 checkpoint
+Run 45944921050 API35 entire job PASS. Actual artifact 15174449926 CRC verified: PiP blue counts 2304 at both interior positions, 0 outside, dx/dy 0.4 in preview and export; crossfade duration 3500ms, midpoint red/blue 128/127. Required parser passed. API29 still running at checkpoint.

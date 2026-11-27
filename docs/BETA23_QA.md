@@ -14,3 +14,16 @@ Base c62579af920faba8d5e1529a1c84061bf5fde37b. Run 45944921050 build and smoke p
 Exact-source Git blobs verified: OverlapPlan 292b33505663b8fd6b56247c7c854f1088408f73, PictureLayer cdb10bd3a2caa17938b3f5d4daeb3ab73efa7ffd, RestorationLab d79745de9ee9869a182dc0709b9c1f7a7aab141a.
 Standalone Java harness with matching project constants: 38098 schedule assertions (200 seeded cases), 4210 nonlinear motion/trim assertions, 1474584 model assertions; 337948 values compared bitwise across four models and five dimensions. All pass, total 1516892 assertions (primarily finite pixel values, not independent test cases). Actual 1024x720 refined CPU host inference Deblur 52.941ms, SR2x 86.445ms single measured pass, not mobile. Full project build and new Android gates pending. No local Android SDK/Gradle/adb available. 
 Remaining: exact Beta22/23 CI, combined compositor edge cases, distinct layer URI revocation and v8 force-stop, full multilayer and per-cut dip/curve, independent all-screen redesign, real naturally degraded photo corpora and physical ARM64, actual Android benchmark result, HDR, signing. 
+
+## Beta24 checkpoint: real run 45945717562
+Exact commit 1ef3ec6a5f762e63e06dea788c480a45882d38be build, install, API35 full instrumented job PASS, API29 still running. Actual artifact 15175356436 CRC verified JUnit XML 63 passed, 0 failed, 18 skipped (81 total). Artifact 15175216933 CRC verified SHA256 be71414763c3a9b81089f268f8c55fb7d8bbfc0286300b33134ddf86fbe49dbb. Both combined PiP/crossfade preview/export 5500ms with midpoint R/B 128/127 and opacity overlay R/B 128/127, base blue and final red 253. Screenshot PNG 1080x2400 SHA256 272f2870ba052ccf6769f0b498d40efaa8e0d7546162e5f18381d1f4115a45b0 matches exact device log marker. Tiled refined models actual API35 inference 1725.054617ms deblur / 1767.49322ms SR on 1024x720, seam parity verified.
+
+| duration s | mode | elapsed ms | bytes | actual video bitrate bps | sampled PSS KiB | frames | drift ms |
+|---:|---|---:|---:|---:|---:|---:|---:|
+|2|export|3477|1442008|4070876|106683|48|4|
+|2|preview|3172|1442008|4070876|111041|48|4|
+|10|export|7953|5856009|4268487|107807|240|4|
+|10|preview|7330|5856009|4268487|109691|240|4|
+|30|export|19653|17720101|4522425|125371|720|15|
+|30|preview|19473|17720101|4522425|127151|720|15|
+All x86_64 Android API35 720p24; sampled PSS, not physical or 1080p performance. No final 4/4 claim at checkpoint.

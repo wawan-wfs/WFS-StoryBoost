@@ -1,5 +1,10 @@
 # WFS StoryBoost changelog
 
+## Beta24 integrated candidate
+- Independent second PiP slot and v9 draft, native pick/edit/overview, per-cut visual easing with linear audio, strict migration and actual decoded z-order/PCM gate.
+- Owner revocation isolated to second overlay, expanded v9 process death, native Full HD benchmark 2/10/30s, all earlier gates retained.
+- Adjustable neural residual strength; exact local curve/strength checks (701575 numeric assertions) and archived CC0 photo metrics; ARM64 runner provided but not executed. Beta23 API35 actual combined compositor and 720p matrix PASS. New acceptance pending.
+
 ## Beta23 integrated candidate
 - Stable per-cut crossfade overrides and mixed hard cuts, v8 draft migration, nonlinear PiP motion with trim-stable timing, direct timeline scrub.
 - Mandatory decoded three-clip crossfade+PiP pixel/PCM test and API35 Android 720p preview/export 2/10/30s benchmark with sampled PSS and actual bitrate.
