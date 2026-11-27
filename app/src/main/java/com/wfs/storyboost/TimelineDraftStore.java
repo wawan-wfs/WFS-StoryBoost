@@ -14,7 +14,7 @@ import java.util.Collections;
 /** One private, versioned timeline slot. Legacy single-source drafts are independent. */
 final class TimelineDraftStore {
     private static final String PREFS="one-track-timeline",KEY="draft";
-    private static final int VERSION=6,MAX_CHARS=90000;
+    private static final int VERSION=7,MAX_CHARS=90000;
     private TimelineDraftStore(){}
     private static SharedPreferences prefs(Context c){return c.getSharedPreferences(PREFS,Context.MODE_PRIVATE);}
 
@@ -60,7 +60,13 @@ final class TimelineDraftStore {
                 voice=new TimelineProject.Audio(a.getString("uri"),strictLong(a,"duration"),strictLong(a,"inMs"),
                         strictLong(a,"outMs"),strictLong(a,"startMs"),strictInt(a,"volume"));
             }
-            return new TimelineProject(clips,caption,strictInt(j,"quality"),audio,voice,fade,version>=6?strictInt(j,"crossfadeMs"):0);
+            PictureLayer picture=null;
+            if(version>=7){
+                JSONObject a=j.getJSONObject("picture");
+                picture=new PictureLayer(a.getString("uri"),strictLong(a,"duration"),strictLong(a,"inMs"),strictLong(a,"outMs"),
+                        strictLong(a,"startMs"),strictInt(a,"scale"),strictInt(a,"opacity"),strictInt(a,"xStart"),strictInt(a,"yStart"),strictInt(a,"xEnd"),strictInt(a,"yEnd"));
+            }
+            return new TimelineProject(clips,caption,strictInt(j,"quality"),audio,voice,fade,version>=6?strictInt(j,"crossfadeMs"):0,picture);
         }catch(JSONException|IllegalArgumentException|ClassCastException corrupt){return null;}
     }
 
@@ -80,7 +86,7 @@ final class TimelineDraftStore {
 
     static boolean save(Context c,TimelineProject project){
         try{
-            int schema=project.crossfadeMs>0?VERSION:project.hasZoom()?5:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
+            int schema=project.picture!=null?VERSION:project.crossfadeMs>0?6:project.hasZoom()?5:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
             JSONArray entries=new JSONArray();
             for(TimelineProject.Clip clip:project.clips){
                 JSONObject entry=new JSONObject().put("id",clip.id).put("uri",clip.uri)
@@ -96,6 +102,12 @@ final class TimelineDraftStore {
             JSONObject doc=new JSONObject().put("version",schema).put("clips",entries)
                     .put("quality",project.quality);
             if(schema>=6)doc.put("crossfadeMs",project.crossfadeMs);
+            if(schema>=7){
+                PictureLayer a=project.picture;
+                doc.put("picture",new JSONObject().put("uri",a.uri).put("duration",a.duration).put("inMs",a.in)
+                        .put("outMs",a.out).put("startMs",a.start).put("scale",a.scale).put("opacity",a.opacity)
+                        .put("xStart",a.xStart).put("yStart",a.yStart).put("xEnd",a.xEnd).put("yEnd",a.yEnd));
+            }
             if(schema>=3){
                 doc.put("fadeMs",project.fadeMs);
                 if(project.audio!=null){

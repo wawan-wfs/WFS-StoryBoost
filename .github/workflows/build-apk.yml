@@ -257,10 +257,15 @@ jobs:
           script: |
             bash scripts/qa-video-fixtures.sh
             bash scripts/fetch-dncnn-model.sh
+            adb shell rm -f /data/local/tmp/wfs-restoration-lab.png
             bash scripts/qa-beta16-connected.sh ${{ matrix.api }}
-            adb exec-out run-as com.wfs.storyboost.studio cat files/qa-restoration-lab.png > qa-beta16-preview/restoration-lab.png
-            python3 -c 'from pathlib import Path; data=Path("qa-beta16-preview/restoration-lab.png").read_bytes(); assert data.startswith(bytes.fromhex("89504e470d0a1a0a")) and len(data)>1024'
-            adb shell run-as com.wfs.storyboost.studio rm files/qa-restoration-lab.png
+            adb pull /data/local/tmp/wfs-restoration-lab.png qa-beta16-preview/restoration-lab.png
+            python3 scripts/verify-restoration-screenshot.py qa-beta16-preview/restoration-lab.png qa-beta16-preview/preview.log
+            adb shell rm -f /data/local/tmp/wfs-restoration-lab.png
+            # Gradle may uninstall the APK pair after connected tests. Restore the exact
+            # already-built APKs before running independent process-death instrumentation.
+            adb install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
+            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             bash scripts/qa-process-death-local.sh
             bash scripts/qa-process-death-timeline.sh
             bash scripts/qa-process-death-pending.sh

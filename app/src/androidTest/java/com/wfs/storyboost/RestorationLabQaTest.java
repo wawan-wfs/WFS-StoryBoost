@@ -36,14 +36,34 @@ public class RestorationLabQaTest {
         float[] scaled=RestorationLab.bilinear2x(new float[]{0,1,0,1},2,2);
         assertEquals(16,scaled.length);assertEquals(.25f,scaled[1],.000001f);assertEquals(.75f,scaled[2],.000001f);
     }
+    private static byte[] shell(android.app.UiAutomation automation,String command)throws IOException{
+        try(java.io.InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command));
+            java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){
+            byte[] buf=new byte[8192];int n;
+            while((n=in.read(buf))!=-1){if(out.size()+n>24*1024*1024)throw new IOException("Screenshot too large");out.write(buf,0,n);}
+            return out.toByteArray();
+        }
+    }
     @Test(timeout=60000) public void restorationLabSyntheticUiRunsOffline()throws Exception{
         UiDevice device=UiDevice.getInstance(InstrumentationRegistry.getInstrumentation());
         try(ActivityScenario<RestorationLabActivity> activity=ActivityScenario.launch(RestorationLabActivity.class)){
             androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withText("Uji demo sintetis SR 2×"))
                     .perform(androidx.test.espresso.action.ViewActions.scrollTo(),androidx.test.espresso.action.ViewActions.click());
             assertNotNull(device.wait(Until.findObject(By.textStartsWith("Preview neural siap")),20000));
-            Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
-            assertTrue(device.takeScreenshot(new java.io.File(ctx.getFilesDir(),"qa-restoration-lab.png")));
+            // Gradle removes the target package after connected tests. A shell-owned
+            // screenshot survives that lifecycle; capture it while this real UI is open.
+            android.app.UiAutomation automation=InstrumentationRegistry.getInstrumentation().getUiAutomation();
+            byte[] command=shell(automation,"screencap -p /data/local/tmp/wfs-restoration-lab.png");
+            assertEquals("screencap error",0,command.length);
+            byte[] png=shell(automation,"cat /data/local/tmp/wfs-restoration-lab.png");
+            assertTrue(png.length>1024);
+            assertArrayEquals(new byte[]{(byte)137,80,78,71,13,10,26,10},java.util.Arrays.copyOf(png,8));
+            android.graphics.Bitmap decoded=android.graphics.BitmapFactory.decodeByteArray(png,0,png.length);
+            assertNotNull(decoded);int width=decoded.getWidth(),height=decoded.getHeight();decoded.recycle();
+            assertTrue(width>=320&&height>=640);
+            StringBuilder sha=new StringBuilder();
+            for(byte v:java.security.MessageDigest.getInstance("SHA-256").digest(png))sha.append(String.format(java.util.Locale.ROOT,"%02x",v&255));
+            android.util.Log.i("WfsTimelinePreviewQA","restorationScreenshotSha256="+sha+" width="+width+" height="+height);
         }
     }
 }

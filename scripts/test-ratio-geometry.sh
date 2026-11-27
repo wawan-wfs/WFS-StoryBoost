@@ -22,6 +22,8 @@ javac -d "$TMP" "$ROOT/app/src/main/java/com/wfs/storyboost/AspectRatioProfile.j
   "$ROOT/app/src/main/java/com/wfs/storyboost/ClipAdjustments.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/OverlapPlan.java" \
   "$ROOT/tests/OverlapPlanTest.java" \
+  "$ROOT/app/src/main/java/com/wfs/storyboost/PictureLayer.java" \
+  "$ROOT/tests/PictureLayerTest.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/RestorationLab.java" \
   "$ROOT/tests/RestorationLabModelTest.java" \
   "$ROOT/app/src/main/java/com/wfs/storyboost/TimelineProject.java" \
@@ -37,3 +39,4 @@ java -cp "$TMP" com.wfs.storyboost.TimelineBatchTest
 java -cp "$TMP" com.wfs.storyboost.PcmToneProbeTest
 java -cp "$TMP" com.wfs.storyboost.OverlapPlanTest
 java -cp "$TMP" com.wfs.storyboost.RestorationLabModelTest "$ROOT/app/src/main/assets/restoration-lab"
+java -cp "$TMP" com.wfs.storyboost.PictureLayerTest
