@@ -24,17 +24,22 @@ class EvidenceTest(unittest.TestCase):
             "dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified","dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified",
             "crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001","crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001",
             "pipVerified before=0 early=2000 late=2000 after=0 dx=0.4 dy=0.4","pipVerified before=0 early=2000 late=2000 after=0 dx=0.4 dy=0.4"))
+        mixed="I/WfsTimelinePreviewQA: mixedCutVerified duration=5500 mixRed=127 mixBlue=126 pipRed=127 pipBlue=126 baseBlue=253 finalRed=253"
+        self.metrics+="\n"+mixed+"\n"+mixed+"\n"+"\n".join(
+            f"I/WfsTimelinePreviewQA: hdBenchmarkVerified seconds={s} mode={m} elapsedMs=1000 bytes=4096 videoBitrate=4000000 sampledPssKb=20000 frames={s*24} driftMs=15"
+            for s in (2,10,30) for m in ("preview","export"))
         self.log.write_text(self.metrics)
         self.write_xml()
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
-        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
+        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip","cutAndCurveV8RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
                  for n, tag in zip(qa.REQUIRED, (first, second) + ("",)*(len(qa.REQUIRED)-2))]
         for i,n in enumerate(qa.REQUIRED[:len(cases)]):
             if n in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility"):
                 cases[i]=cases[i].replace(qa.CLASS,"com.wfs.storyboost.RestorationLabQaTest")
         if omit:
             cases.pop()
+        cases.append(f'<testcase classname="{qa.CLASS}" name="timelineHdBenchmarkActualAndroid"/>')
         if duplicate:
             cases.append(cases[0])
         self.xml.write_text("<testsuite>" + "".join(cases) + "</testsuite>")
@@ -158,6 +163,14 @@ class EvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'PiP'):
             self.check()
 
+    def test_missing_mixed_cut(self):
+        self.log.write_text(self.metrics.replace("mixedCutVerified","missing"))
+        with self.assertRaisesRegex(ValueError,"mixed-cut"):
+            self.check()
+    def test_hd_missing_api35(self):
+        self.log.write_text(self.metrics.replace("hdBenchmarkVerified","missing"))
+        with self.assertRaisesRegex(ValueError,"HD benchmark"):
+            self.check(35)
     def test_wrong_api(self):
         with self.assertRaisesRegex(ValueError, "API29/35"):
             self.check(34)

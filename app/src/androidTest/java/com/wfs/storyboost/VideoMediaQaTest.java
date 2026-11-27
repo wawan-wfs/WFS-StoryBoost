@@ -666,6 +666,90 @@ public class VideoMediaQaTest {
             assertArrayEquals(hash,hashSource(source));
         }finally{TimelineDraftStore.clear(ctx);}
     }
+    @Test(timeout=600000)
+    public void timelineMixedCutsAndPictureLayerDecodedProof()throws Exception{
+        Uri red=importFixture("qa-crossfade-red.mp4"),blue=importFixture("qa-crossfade-blue.mp4");
+        byte[] hashRed=hashSource(red),hashBlue=hashSource(blue);
+        TimelineProject project=TimelineProject.empty()
+            .append(TimelineProject.Clip.create(red.toString(),2000,0,2000))
+            .append(TimelineProject.Clip.create(blue.toString(),2000,0,2000))
+            .append(TimelineProject.Clip.create(red.toString(),2000,0,2000))
+            .cut(0,500).picture(new PictureLayer(red.toString(),2000,0,1500,1500,35,50,100,0,100,0,PictureLayer.SMOOTH,1500));
+        assertEquals(5500,project.duration());assertEquals(3500,project.startOf(2));assertEquals(0,project.cutMs(1));
+        File output=null,preview=null;
+        try{
+            output=renderAdjusted(project,false,280,null);preview=renderAdjusted(project,true,280,null);
+            for(File file:new File[]{output,preview}){
+                MediaProbe.Info info=MediaProbe.inspect(file);assertTrue(info.video&&info.audio);assertTrue(Math.abs(info.durationMs-5500)<=250);
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file,300000,900000,1680000,1820000,2400000,3000000);
+                double early=pcm.firstTones.tone440(),late=pcm.lastTones.tone780(),mixA=pcm.overlapTones.tone440(),mixB=pcm.overlapTones.tone780();
+                assertTrue(early>.05&&late>.05&&pcm.firstTones.tone780()<early*.1&&pcm.lastTones.tone440()<late*.1);
+                assertTrue(mixA>early*.25&&mixA<early*.75&&mixB>late*.25&&mixB<late*.75);
+                PcmWindowOracle.Result cut= PcmWindowOracle.decode(file,300000,900000,3100000,3300000,4000000,4600000);
+                assertTrue(cut.overlapTones.tone780()>.05&&cut.overlapTones.tone440()<.01);
+                assertTrue(cut.lastTones.tone440()>.05&&cut.lastTones.tone780()<.01);
+                int mixRed,mixBlue,pipRed,pipBlue,baseRed,baseBlue,finalRed,finalBlue;
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    int mixed=sampleColor(reader,1750000,.5,.5),overlay=sampleColor(reader,2500000,.8,.2),
+                        base=sampleColor(reader,2500000,.5,.5),end=sampleColor(reader,4500000,.5,.5);
+                    mixRed=android.graphics.Color.red(mixed);mixBlue=android.graphics.Color.blue(mixed);
+                    pipRed=android.graphics.Color.red(overlay);pipBlue=android.graphics.Color.blue(overlay);
+                    baseRed=android.graphics.Color.red(base);baseBlue=android.graphics.Color.blue(base);
+                    finalRed=android.graphics.Color.red(end);finalBlue=android.graphics.Color.blue(end);
+                }
+                android.util.Log.i("WfsTimelinePreviewQA","mixedCutObserved duration="+info.durationMs+" colors="+mixRed+","+mixBlue+","+pipRed+","+pipBlue+","+baseRed+","+baseBlue+","+finalRed+","+finalBlue);
+                assertTrue(mixRed>75&&mixRed<180&&mixBlue>75&&mixBlue<180);
+                assertTrue("PiP half opacity must blend red on blue",pipRed>75&&pipRed<180&&pipBlue>75&&pipBlue<180);
+                assertTrue(baseRed<30&&baseBlue>200&&finalRed>200&&finalBlue<30);
+                assertTrue(MediaProbe.inspectSampleTimeline(file).lastPtsDriftMs()<=250);
+                android.util.Log.i("WfsTimelinePreviewQA","mixedCutVerified duration="+info.durationMs+" mixRed="+mixRed+" mixBlue="+mixBlue+" pipRed="+pipRed+" pipBlue="+pipBlue+" baseBlue="+baseBlue+" finalRed="+finalRed);
+            }
+            assertArrayEquals(hashRed,hashSource(red));assertArrayEquals(hashBlue,hashSource(blue));
+        }finally{if(output!=null)output.delete();if(preview!=null)preview.delete();}
+    }
+    private static int sampleColor(MediaMetadataRetriever reader,long us,double x,double y){
+        android.graphics.Bitmap image=reader.getFrameAtTime(us,MediaMetadataRetriever.OPTION_CLOSEST);
+        assertNotNull(image);try{return image.getPixel((int)(x*image.getWidth()),(int)(y*image.getHeight()));}finally{image.recycle();}
+    }
+    @SdkSuppress(minSdkVersion=35)
+    @Test(timeout=1800000)
+    public void timelineHdBenchmarkActualAndroid()throws Exception{
+        Uri source=importFixture("qa-hd-benchmark.mp4");byte[] hash=hashSource(source);
+        long duration=MediaProbe.duration(ctx,source);assertTrue(duration>=30000);
+        for(int seconds:new int[]{2,10,30})for(boolean preview:new boolean[]{false,true}){
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(source.toString(),duration,0,seconds*1000L))
+                .quality(OutputProfile.HD).adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,8,0,0,false));
+            File file=null;long[] pss={android.os.Debug.getPss()};
+            try{
+                long begin=android.os.SystemClock.elapsedRealtime();file=renderAdjusted(project,preview,280,pss);
+                long elapsed=android.os.SystemClock.elapsedRealtime()-begin;
+                MediaProbe.Info info=MediaProbe.inspect(file);AspectRatioProfile.Size size=MediaDimensions.video(file);
+                assertEquals(1280,size.width);assertEquals(720,size.height);assertTrue(info.video&&info.audio);
+                assertTrue(containsCodec(file,"video/avc"));assertTrue(containsCodec(file,"audio/mp4a-latm"));
+                assertTrue(Math.abs(info.durationMs-seconds*1000L)<=250);
+                MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(file);
+                assertTrue(pts.lastPtsDriftMs()<=250&&pts.videoSamples>=seconds*20);
+                try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
+                    reader.setDataSource(file.getAbsolutePath());
+                    sampleColor(reader,250000,.5,.5);sampleColor(reader,seconds*500000L,.5,.5);sampleColor(reader,seconds*1000000L-250000,.5,.5);
+                }
+                PcmWindowOracle.Result pcm=PcmWindowOracle.decode(file,200000,800000,seconds*1000000L-800000,seconds*1000000L-200000,0,0);
+                assertTrue(pcm.firstTones.tone440()>.04&&pcm.overlapTones.tone440()>.04);
+                long videoBytes=0;MediaExtractor extractor=new MediaExtractor();
+                try{
+                    extractor.setDataSource(file.getAbsolutePath());int video=-1;
+                    for(int i=0;i<extractor.getTrackCount();i++)if("video/avc".equals(extractor.getTrackFormat(i).getString(MediaFormat.KEY_MIME))){video=i;break;}
+                    assertTrue(video>=0);extractor.selectTrack(video);
+                    while(extractor.getSampleSize()>=0){videoBytes+=extractor.getSampleSize();if(!extractor.advance())break;}
+                }finally{extractor.release();}
+                long bitrate=videoBytes*8000L/Math.max(1,info.videoDurationMs);
+                assertTrue(bitrate>0&&elapsed>0&&pss[0]>0);
+                android.util.Log.i("WfsTimelinePreviewQA","hdBenchmarkVerified seconds="+seconds+" mode="+(preview?"preview":"export")+" elapsedMs="+elapsed+" bytes="+file.length()+" videoBitrate="+bitrate+" sampledPssKb="+pss[0]+" frames="+pts.videoSamples+" driftMs="+pts.lastPtsDriftMs());
+            }finally{if(file!=null)file.delete();}
+        }
+        assertArrayEquals(hash,hashSource(source));
+    }
     @Test(timeout=90000)
     public void timelinePictureLayerUiStagesUndoAndRecreate()throws Exception{
         Uri a=importFixture("qa-crossfade-red.mp4"),b=importFixture("qa-crossfade-blue.mp4");
@@ -999,6 +1083,9 @@ public class VideoMediaQaTest {
     }
 
     private File renderAdjusted(TimelineProject draft,boolean privatePreview)throws Exception{
+        return renderAdjusted(draft,privatePreview,125,null);
+    }
+    private File renderAdjusted(TimelineProject draft,boolean privatePreview,int timeoutSeconds,long[] sampledPss)throws Exception{
         CountDownLatch done=new CountDownLatch(1);
         AtomicReference<File> result=new AtomicReference<>();
         AtomicReference<String> error=new AtomicReference<>();
@@ -1011,7 +1098,17 @@ public class VideoMediaQaTest {
             try{if(privatePreview)worker.startTimelinePreview(ctx,draft,listener);else worker.startTimeline(ctx,draft,listener);}
             catch(RuntimeException ex){error.set(ex.toString());done.countDown();}
         });
-        try{assertTrue("Adjusted render timed out",done.await(125,TimeUnit.SECONDS));assertNull(error.get());assertNotNull(result.get());return result.get();}
+        try{
+            long deadline=android.os.SystemClock.elapsedRealtime()+timeoutSeconds*1000L;
+            boolean finished;
+            if(sampledPss==null)finished=done.await(timeoutSeconds,TimeUnit.SECONDS);
+            else{
+                while(!(finished=done.await(500,TimeUnit.MILLISECONDS))&&android.os.SystemClock.elapsedRealtime()<deadline)
+                    sampledPss[0]=Math.max(sampledPss[0],android.os.Debug.getPss());
+                sampledPss[0]=Math.max(sampledPss[0],android.os.Debug.getPss());
+            }
+            assertTrue("Adjusted render timed out",finished);assertNull(error.get());assertNotNull(result.get());return result.get();
+        }
         finally{inst.runOnMainSync(worker::cancel);}
     }
 

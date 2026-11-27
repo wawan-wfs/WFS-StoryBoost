@@ -31,20 +31,23 @@ REQUIRED = (
     "pictureV7RoundTrip",
     "timelinePictureLayerRendersRealMovingOverlay",
     "timelinePictureLayerUiStagesUndoAndRecreate",
+    "cutAndCurveV8RoundTrip",
+    "timelineMixedCutsAndPictureLayerDecodedProof",
 )
 
 
 def evidence(reports, log, api, commit):
     if api not in (29, 35) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Expected API29/35 and exact Git commit SHA")
-    found = {name: [] for name in REQUIRED}
+    required=REQUIRED+("timelineHdBenchmarkActualAndroid",) if api==35 else REQUIRED
+    found = {name: [] for name in required}
     files = sorted(Path(reports).rglob("TEST-*.xml"))
     if not files:
         raise ValueError("No Android JUnit XML reports")
     for path in files:
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
-            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip") else CLASS)
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip","cutAndCurveV8RoundTrip") else CLASS)
             if name in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility"):
                 expected_class="com.wfs.storyboost.RestorationLabQaTest"
             if case.get("classname") == expected_class and name in found:
@@ -94,12 +97,25 @@ def evidence(reports, log, api, commit):
     pip=[tuple(map(float,v)) for line in lines for v in re.findall(pip_pattern,line)]
     if len(pip)!=2 or not all(before==after==0 and early>500 and late>500 and .25<dx<=1 and .25<dy<=1 for before,early,late,after,dx,dy in pip):
         raise ValueError("Missing or invalid PiP movement pixels")
+    mixed_pattern=r"\bmixedCutVerified duration=(\d+) mixRed=(\d+) mixBlue=(\d+) pipRed=(\d+) pipBlue=(\d+) baseBlue=(\d+) finalRed=(\d+)"
+    mixed=[tuple(map(int,v)) for line in lines for v in re.findall(mixed_pattern,line)]
+    if len(mixed)!=2 or not all(5250<=d<=5750 and all(75<x<180 for x in (r,b,pr,pb)) and bb>200 and fr>200 for d,r,b,pr,pb,bb,fr in mixed):
+        raise ValueError("Missing or invalid mixed-cut PiP evidence")
+    hd_pattern=r"\bhdBenchmarkVerified seconds=(\d+) mode=(preview|export) elapsedMs=(\d+) bytes=(\d+) videoBitrate=(\d+) sampledPssKb=(\d+) frames=(\d+) driftMs=(\d+)"
+    hd=[]
+    for line in lines:
+        for seconds,mode,elapsed,size,rate,pss,frames,drift in re.findall(hd_pattern,line):
+            hd.append(dict(seconds=int(seconds),mode=mode,elapsed_ms=int(elapsed),bytes=int(size),video_bitrate=int(rate),sampled_pss_kb=int(pss),frames=int(frames),drift_ms=int(drift)))
+    if api==35 and (len(hd)!=6 or {(x["seconds"],x["mode"]) for x in hd}!={(s,m) for s in (2,10,30) for m in ("preview","export")} or
+                    any(x["elapsed_ms"]<=0 or x["bytes"]<=1024 or x["video_bitrate"]<=0 or x["sampled_pss_kb"]<=0 or x["frames"]<20*x["seconds"] or x["drift_ms"]>250 for x in hd)):
+        raise ValueError("Missing or invalid Android HD benchmark evidence")
     return {"commit": commit, "api": api, "scope": "x86_64 emulator connected preview gate",
+            "mixed_cut_picture":mixed,"hd_benchmark":hd,
             "picture_layer":[dict(zip(("before","early","late","after","dx","dy"),v)) for v in pip],
             "crossfade":[dict(zip(("duration_ms","mid_red","mid_blue","early440","early780","overlap440","overlap780","late780","late440"),v)) for v in cross],
             "dual_track_pcm":[{"first_rms":a,"overlap_rms":b,"early780":c,"early440":d,"late780":e,"late440":f} for a,b,c,d,e,f in dual],
             "soundtrack_pcm": [{"audible_rms":a,"gap_rms":b} for a,b in mix],
-            "required_tests": {name: "passed" for name in REQUIRED},
+            "required_tests": {name: "passed" for name in required},
             "render": render, "ready": ready, "seek_settled_ms": seeks,
             "junit_files": len(files), "status": "passed"}
 
