@@ -52,6 +52,24 @@ public class RestorationLabQaTest {
             android.util.Log.i("WfsTimelinePreviewQA","refinedModel="+name+" inferenceMs="+((android.os.SystemClock.elapsedRealtimeNanos()-start)/1e6)+" parity=verified");
         }
     }
+    @Test(timeout=180000) public void tiledModelsPreserveSeamsAndBoundedPreview()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        for(boolean sr:new boolean[]{false,true})for(boolean refined:new boolean[]{false,true}){
+            String name=sr?"sr2x":"deblur";
+            RestorationLab model;
+            try(InputStream in=ctx.getAssets().open("restoration-lab/"+name+(refined?"-refined":"")+".weights.txt")){model=RestorationLab.load(in,sr,refined);}
+            int w=257,h=263;float[] input=new float[w*h];java.util.Random rng=new java.util.Random(2301);
+            for(int i=0;i<input.length;i++)input[i]=rng.nextFloat();
+            assertArrayEquals(model.infer(input,w,h),model.inferTiled(input,w,h),0f);
+            if(refined){
+                float[] large=new float[1024*720];for(int i=0;i<large.length;i++)large[i]=rng.nextFloat();
+                long start=android.os.SystemClock.elapsedRealtimeNanos();float[] result=model.inferTiled(large,1024,720);
+                assertEquals(large.length,result.length);
+                for(float value:result)assertTrue(Float.isFinite(value)&&value>=0&&value<=1);
+                android.util.Log.i("WfsTimelinePreviewQA","tiledModel="+name+" width=1024 height=720 elapsedMs="+((android.os.SystemClock.elapsedRealtimeNanos()-start)/1e6)+" seamParity=verified");
+            }
+        }
+    }
     private static byte[] shell(android.app.UiAutomation automation,String command)throws IOException{
         try(java.io.InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command));
             java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){

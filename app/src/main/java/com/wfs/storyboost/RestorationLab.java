@@ -11,6 +11,7 @@ import java.util.Locale;
 /** Original tiny residual CNN, synthetic-only research, CPU and network-free. */
 final class RestorationLab {
     static final int MAX_SIDE=512, PARAMETERS=77;
+    static final int MAX_PREVIEW_SIDE=1024,TILE=128,HALO=2;
     static final String DEBLUR_SHA="89e355238c2c233e6442800b0a8b3c2d1633ee6d195cdcc532a3d42a8d6dfcf4";
     static final String SR_SHA="dea96181a956528cfff99cdf94856f5b2a594ed72e467f025e0c4dab99483b01";
     static final String REFINED_DEBLUR_SHA="1d8b2f6b4899ec41bcea862d293c652afb859e67e03417a577033574422419c5";
@@ -47,6 +48,28 @@ final class RestorationLab {
                 result[y*w+x]=clip(a*(1-fy+y0)+b*(fy-y0));
             }
         }return result;
+    }
+    /** Exact tiled convolution: two 3x3 layers require a two-pixel source halo.
+     * Hidden activations are bounded to (TILE+2*HALO)^2*4 floats, independent
+     * of image area. True outer boundaries retain replicated padding.
+     */
+    float[] inferTiled(float[] input,int width,int height)throws InterruptedException{
+        if(width<1||height<1||width>MAX_PREVIEW_SIDE||height>MAX_PREVIEW_SIDE||input.length!=width*height)
+            throw new IllegalArgumentException("Invalid tiled dimensions");
+        for(float x:input)if(!Float.isFinite(x)||x<0||x>1)throw new IllegalArgumentException("Invalid luma");
+        float[] output=new float[input.length];
+        for(int y=0;y<height;y+=TILE)for(int x=0;x<width;x+=TILE){
+            if(Thread.currentThread().isInterrupted())throw new InterruptedException();
+            int coreW=Math.min(TILE,width-x),coreH=Math.min(TILE,height-y);
+            int left=Math.max(0,x-HALO),top=Math.max(0,y-HALO);
+            int right=Math.min(width,x+coreW+HALO),bottom=Math.min(height,y+coreH+HALO);
+            int tw=right-left,th=bottom-top;
+            float[] tile=new float[tw*th];
+            for(int row=0;row<th;row++)System.arraycopy(input,(top+row)*width+left,tile,row*tw,tw);
+            float[] restored=infer(tile,tw,th);
+            for(int row=0;row<coreH;row++)System.arraycopy(restored,(y-top+row)*tw+x-left,output,(y+row)*width+x,coreW);
+        }
+        return output;
     }
     /** Infer on degraded input or pre-upscaled bilinear luma, same size output. */
     float[] infer(float[] input,int width,int height)throws InterruptedException{

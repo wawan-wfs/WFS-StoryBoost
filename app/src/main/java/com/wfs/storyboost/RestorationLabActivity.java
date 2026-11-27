@@ -34,7 +34,7 @@ public final class RestorationLabActivity extends Activity {
         Button back=StudioUi.button(this,"‹ Kembali ke Studio",false);back.setOnClickListener(v->finish());root.addView(back,new LinearLayout.LayoutParams(-1,dp(48)));
         StudioUi.gap(root,this,14);root.addView(StudioUi.text(this,"RESTORATION LAB",11,StudioUi.CYAN,true));
         root.addView(StudioUi.text(this,"AI Deblur & SR 2×",25,StudioUi.TEXT,true));
-        StudioUi.gap(root,this,8);root.addView(StudioUi.text(this,"Eksperimen neural asli · offline · preview maksimal 512 px. Dilatih dengan gambar sintetis, bukan model foto produksi.",13,StudioUi.MUTED,false));
+        StudioUi.gap(root,this,8);root.addView(StudioUi.text(this,"Eksperimen neural asli · offline · preview tiled maksimal 1.024 px. Dilatih dengan gambar sintetis, bukan model foto produksi.",13,StudioUi.MUTED,false));
         StudioUi.gap(root,this,14);
         refined=new android.widget.CheckBox(this);refined.setText("Gunakan model refined (eksperimental)");refined.setTextColor(StudioUi.TEXT);refined.setChecked(true);root.addView(refined,new LinearLayout.LayoutParams(-1,dp(48)));
         deblur=StudioUi.button(this,"Pilih foto · Deblur",true);sr=StudioUi.button(this,"Pilih foto · SR 2×",true);demo=StudioUi.button(this,"Uji demo sintetis SR 2×",false);
@@ -60,7 +60,7 @@ public final class RestorationLabActivity extends Activity {
         if(result==RESULT_OK&&(request==201||request==202)&&data!=null&&data.getData()!=null)run(data.getData(),request==202);
     }
     private Bitmap read(Uri uri,boolean upscale)throws Exception{
-        int limit=upscale?256:512;
+        int limit=upscale?RestorationLab.MAX_PREVIEW_SIDE/2:RestorationLab.MAX_PREVIEW_SIDE;
         if(uri==null){int n=64;int[] pixels=new int[n*n];for(int y=0;y<n;y++)for(int x=0;x<n;x++){int g=(x/8+y/8)%2==0?64:192;pixels[y*n+x]=Color.rgb(g,g,g);}return Bitmap.createBitmap(pixels,n,n,Bitmap.Config.ARGB_8888);}
         if(!"content".equals(uri.getScheme()))throw new java.io.IOException("Invalid source scheme");
         SourceAccess.requireReadable(this,uri);
@@ -86,7 +86,7 @@ public final class RestorationLabActivity extends Activity {
                 for(int i=0;i<y.length;i++)y[i]=Math.max(0f,Math.min(1f,(.2126f*Color.red(rgba[i])+.7152f*Color.green(rgba[i])+.0722f*Color.blue(rgba[i]))/255f));
                 RestorationLab model;
                 try(InputStream stream=getAssets().open("restoration-lab/"+(upscale?"sr2x":"deblur")+(useRefined?"-refined":"")+".weights.txt")){model=RestorationLab.load(stream,upscale,useRefined);}
-                long start=SystemClock.elapsedRealtimeNanos();float[] prediction=model.infer(y,w,h);long ms=(SystemClock.elapsedRealtimeNanos()-start)/1000000L;
+                long start=SystemClock.elapsedRealtimeNanos();float[] prediction=model.inferTiled(y,w,h);long ms=(SystemClock.elapsedRealtimeNanos()-start)/1000000L;
                 for(int i=0;i<rgba.length;i++){int delta=Math.round((prediction[i]-y[i])*255);int old=rgba[i];
                     rgba[i]=Color.argb(Color.alpha(old),channel(Color.red(old)+delta),channel(Color.green(old)+delta),channel(Color.blue(old)+delta));}
                 output=Bitmap.createBitmap(rgba,w,h,Bitmap.Config.ARGB_8888);

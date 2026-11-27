@@ -28,6 +28,7 @@ REQUIRED = (
     "originalModelInferenceAndHashGate",
     "restorationLabSyntheticUiRunsOffline",
     "refinedModelsInferenceAndOriginalCompatibility",
+    "tiledModelsPreserveSeamsAndBoundedPreview",
     "pictureV7RoundTrip",
     "timelinePictureLayerRendersRealMovingOverlay",
     "timelinePictureLayerUiStagesUndoAndRecreate",
@@ -48,7 +49,7 @@ def evidence(reports, log, api, commit):
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
             expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip","cutAndCurveV8RoundTrip") else CLASS)
-            if name in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility"):
+            if name in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility","tiledModelsPreserveSeamsAndBoundedPreview"):
                 expected_class="com.wfs.storyboost.RestorationLabQaTest"
             if case.get("classname") == expected_class and name in found:
                 found[name].append(case)

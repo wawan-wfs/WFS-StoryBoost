@@ -35,7 +35,7 @@ class EvidenceTest(unittest.TestCase):
         cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip","cutAndCurveV8RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
                  for n, tag in zip(qa.REQUIRED, (first, second) + ("",)*(len(qa.REQUIRED)-2))]
         for i,n in enumerate(qa.REQUIRED[:len(cases)]):
-            if n in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility"):
+            if n in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility","tiledModelsPreserveSeamsAndBoundedPreview"):
                 cases[i]=cases[i].replace(qa.CLASS,"com.wfs.storyboost.RestorationLabQaTest")
         if omit:
             cases.pop()
