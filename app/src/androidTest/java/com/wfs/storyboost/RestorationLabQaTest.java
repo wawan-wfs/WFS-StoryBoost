@@ -59,6 +59,8 @@ public class RestorationLabQaTest {
     }
     @Test(timeout=180000) public void tiledModelsPreserveSeamsAndBoundedPreview()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        String run=InstrumentationRegistry.getArguments().getString("wfs.restoration.run","connected");
+        assertTrue(run.matches("[A-Za-z0-9_-]{1,80}"));
         for(boolean sr:new boolean[]{false,true})for(boolean refined:new boolean[]{false,true}){
             String name=sr?"sr2x":"deblur";
             RestorationLab model;
@@ -71,7 +73,7 @@ public class RestorationLabQaTest {
                 long start=android.os.SystemClock.elapsedRealtimeNanos();float[] result=model.inferTiled(large,1024,720);
                 assertEquals(large.length,result.length);
                 for(float value:result)assertTrue(Float.isFinite(value)&&value>=0&&value<=1);
-                android.util.Log.i("WfsTimelinePreviewQA","tiledModel="+name+" width=1024 height=720 elapsedMs="+((android.os.SystemClock.elapsedRealtimeNanos()-start)/1e6)+" seamParity=verified");
+                android.util.Log.i("WfsTimelinePreviewQA","tiledModel="+name+" width=1024 height=720 elapsedMs="+((android.os.SystemClock.elapsedRealtimeNanos()-start)/1e6)+" seamParity=verified run="+run+" pid="+android.os.Process.myPid());
             }
         }
     }

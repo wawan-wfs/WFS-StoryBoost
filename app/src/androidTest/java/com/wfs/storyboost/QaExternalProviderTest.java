@@ -399,6 +399,58 @@ public final class QaExternalProviderTest {
         }
     }
 
+    @Test(timeout=90000) public void timelineRefusesOnlySecondPictureOwnerRevocation()throws Exception{
+        phase("picture-revoked");
+        Uri external=providerVideo(),base=null;
+        VideoMergeEngine engine=new VideoMergeEngine();
+        TimelineDraftStore.clear(app());
+        videoControl("GRANT");
+        try{
+            android.content.ContentValues values=new android.content.ContentValues();
+            values.put(android.provider.MediaStore.Video.Media.DISPLAY_NAME,"wfs-overlay-qa-"+System.nanoTime()+".mp4");
+            values.put(android.provider.MediaStore.Video.Media.MIME_TYPE,"video/mp4");
+            values.put(android.provider.MediaStore.Video.Media.RELATIVE_PATH,"Movies/WFS-StoryBoost-QA");
+            base=app().getContentResolver().insert(android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);
+            assertNotNull(base);
+            try(InputStream in=inst.getContext().getAssets().open("qa-crossfade-red.mp4");
+                java.io.OutputStream out=app().getContentResolver().openOutputStream(base)){
+                assertNotNull(out);byte[] buf=new byte[8192];for(int n;(n=in.read(buf))!=-1;)out.write(buf,0,n);
+            }
+            String baseSha=sha(app(),base),sourceSha=sha(app(),external);
+            long duration=MediaProbe.duration(app(),external);
+            TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(base.toString(),2000,0,2000))
+                .picture(new PictureLayer(base.toString(),2000,0,1000,0,35,100,0,0,0,0))
+                .picture2(new PictureLayer(external.toString(),duration,0,1000,0,35,100,100,0,100,0));
+            assertTrue(TimelineDraftStore.save(app(),project));
+            String saved=app().getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE).getString("draft","");
+            videoControl("REVOKE");assertFalse(SourceAccess.canRead(app(),external));assertTrue(SourceAccess.canRead(app(),base));
+            String[] before=app().getCacheDir().list((d,n)->n.startsWith("wfs_join_")||n.startsWith(VideoMergeEngine.PREVIEW_PREFIX));
+            assertNotNull(before);Arrays.sort(before);
+            for(boolean preview:new boolean[]{false,true}){
+                AtomicReference<String> error=new AtomicReference<>();
+                inst.runOnMainSync(()->{
+                    VideoMergeEngine.Listener listener=new VideoMergeEngine.Listener(){
+                        public void onCompleted(java.io.File file){fail("Revoked overlay was silently omitted");}
+                        public void onFailure(String message){error.set(message);}
+                    };
+                    try{if(preview)engine.startTimelinePreview(app(),TimelineDraftStore.load(app()),listener);
+                        else engine.startTimeline(app(),TimelineDraftStore.load(app()),listener);}
+                    catch(IllegalArgumentException expected){error.set(expected.getMessage());}
+                });
+                assertNotNull(error.get());assertTrue(error.get(),error.get().contains("PiP")&&error.get().contains("Akses media sumber hilang"));
+            }
+            String[] after=app().getCacheDir().list((d,n)->n.startsWith("wfs_join_")||n.startsWith(VideoMergeEngine.PREVIEW_PREFIX));
+            assertNotNull(after);Arrays.sort(after);assertArrayEquals(before,after);
+            assertEquals(saved,app().getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE).getString("draft",""));
+            assertEquals(baseSha,sha(app(),base));videoControl("GRANT");assertEquals(sourceSha,sha(app(),external));
+            android.os.Bundle proof=new android.os.Bundle();proof.putString("wfsSecondPictureRevocation","verified");inst.sendStatus(2,proof);
+        }finally{
+            inst.runOnMainSync(engine::cancel);TimelineDraftStore.clear(app());
+            if(base!=null)app().getContentResolver().delete(base,null,null);
+            videoControl("REVOKE");
+        }
+    }
+
     @Test(timeout=150000) public void verifyVideoGrantRevokedDuringRealEncoder() throws Exception {
         phase("video-encode");
         Uri source=providerVideo();

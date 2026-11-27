@@ -54,3 +54,6 @@ bash scripts/qa-hdr-arm64.sh
 ```
 
 The harness runs only the HLG and HDR10 methods, on-device with synthetic fixtures. It does not install, clear data, copy personal media, or request credentials. Exit 0 requires verified export results for both transfers. Exit 2 means at least one case could not run for missing capability and none failed. Exit 1 means failure or invalid setup. Share only reviewed synthetic metrics if needed. Before/after diagnostic snapshots are not a measured peak or proof that no LMK occurred. When capability is absent, repeat on a supported device and retain both outcomes.
+
+## Beta24 Restoration Lab
+On an authorized spare physical ARM64 Android 10+ device with the matching app/test APK pair installed, use Bash (Git Bash/WSL with working adb) and `bash scripts/qa-restoration-arm64.sh`. It rejects emulator/incorrect ABI, checks run-tagged model inference and saves local reports only. Record exact APK checksums separately. Not a naturally degraded photo test or release acceptance. Do not run on a device with unsaved edits. No physical result recorded for Beta24.

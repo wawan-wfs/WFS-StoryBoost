@@ -69,6 +69,9 @@ phase(){
   if grep -Eq 'FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$output";then
     echo "Non-green native provider phase $scope" >&2; exit 1;
   fi
+  if [[ "$scope" == picture-revoked ]]; then
+    grep -q "^INSTRUMENTATION_STATUS: wfsSecondPictureRevocation=verified[[:space:]]*$" "$output" || { echo "Missing independent PiP revocation proof" >&2; exit 1; }
+  fi
   if [[ "$scope" == timeline-revoked ]]; then
     grep -q "^INSTRUMENTATION_STATUS: wfsTimelinePreviewRevocation=verified[[:space:]]*$" "$output" ||
       { echo "Missing actual revoked-preview proof" >&2; exit 1; }
@@ -91,6 +94,7 @@ control RESTORE
 phase reimportAfterOwnerRevoke reimport
 phase verifyVideoGrantRevokedDuringOriginalCopy video-copy
 phase timelineRefusesRevokedExternalVideoWithoutDiscardingDraft timeline-revoked
+phase timelineRefusesOnlySecondPictureOwnerRevocation picture-revoked
 if [[ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" == 35 ]]; then
   phase verifyVideoGrantRevokedDuringRealEncoder video-encode
 fi
