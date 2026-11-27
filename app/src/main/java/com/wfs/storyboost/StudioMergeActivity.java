@@ -696,16 +696,27 @@ public final class StudioMergeActivity extends Activity {
         EditText ys=numberField(form,"PiP Y awal (0–100)",picture.yStart);
         EditText xe=numberField(form,"PiP X akhir (0–100)",picture.xEnd);
         EditText ye=numberField(form,"PiP Y akhir (0–100)",picture.yEnd);
+        form.addView(txt("Kurva gerak",12,StudioUi.TEXT,true));
+        android.widget.Spinner curve=new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> curveAdapter=new android.widget.ArrayAdapter<>(this,android.R.layout.simple_spinner_item,
+            new String[]{"Linear","Ease-in","Ease-out","Smoothstep"});
+        curveAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);curve.setAdapter(curveAdapter);
+        curve.setSelection(picture.curve);curve.setContentDescription("Kurva gerak PiP");
+        form.addView(curve,new LinearLayout.LayoutParams(-1,StudioUi.dp(this,48)));
+        form.addView(txt("Mengubah trim, target atau kurva memulai ulang durasi animasi.",11,StudioUi.MUTED,false));
         ScrollView scroll=new ScrollView(this);scroll.addView(form);
         AlertDialog panel=new AlertDialog.Builder(this).setTitle("Picture-in-picture").setView(scroll)
                 .setNegativeButton("Batal",null).setNeutralButton("Hapus",null).setPositiveButton("Terapkan",null).show();
         panel.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             if(!canEditTimeline()||timeline.current()!=prior)return;
             try{
-                PictureLayer next=new PictureLayer(picture.uri,picture.duration,Long.parseLong(in.getText().toString()),
-                    Long.parseLong(out.getText().toString()),Long.parseLong(start.getText().toString()),Integer.parseInt(scale.getText().toString()),
-                    Integer.parseInt(opacity.getText().toString()),Integer.parseInt(xs.getText().toString()),Integer.parseInt(ys.getText().toString()),
-                    Integer.parseInt(xe.getText().toString()),Integer.parseInt(ye.getText().toString()));
+                long from=Long.parseLong(in.getText().toString()),to=Long.parseLong(out.getText().toString());
+                int x0=Integer.parseInt(xs.getText().toString()),y0=Integer.parseInt(ys.getText().toString()),
+                    x1=Integer.parseInt(xe.getText().toString()),y1=Integer.parseInt(ye.getText().toString()),mode=curve.getSelectedItemPosition();
+                long motion=from==picture.in&&to==picture.out&&x0==picture.xStart&&y0==picture.yStart&&x1==picture.xEnd&&y1==picture.yEnd&&mode==picture.curve
+                    ?picture.motionDuration:to-from;
+                PictureLayer next=new PictureLayer(picture.uri,picture.duration,from,to,Long.parseLong(start.getText().toString()),Integer.parseInt(scale.getText().toString()),
+                    Integer.parseInt(opacity.getText().toString()),x0,y0,x1,y1,mode,motion);
                 if(editTimeline(prior.picture(next)))panel.dismiss();
             }catch(IllegalArgumentException ex){toast("Periksa durasi, ukuran, posisi dan opacity PiP.");}
         });

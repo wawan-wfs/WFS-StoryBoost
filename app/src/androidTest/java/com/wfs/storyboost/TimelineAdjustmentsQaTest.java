@@ -16,6 +16,24 @@ import android.widget.TextView;
 
 @RunWith(AndroidJUnit4.class)
 public final class TimelineAdjustmentsQaTest {
+    @Test public void cutAndCurveV8RoundTrip()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);
+        try{
+            TimelineProject base=TimelineProject.empty().append(TimelineProject.Clip.create("content://qa/a",2000,0,2000))
+                .append(TimelineProject.Clip.create("content://qa/b",2000,0,2000))
+                .append(TimelineProject.Clip.create("content://qa/c",2000,0,2000));
+            TimelineProject edit=base.cut(0,500).cut(1,150).picture(new PictureLayer("content://qa/p",2000,0,1000,500,40,80,0,0,100,100,PictureLayer.EASE_IN,1000));
+            assertTrue(TimelineDraftStore.save(ctx,edit));String raw=prefs.getString("draft",null);
+            assertEquals(8,new JSONObject(raw).getInt("version"));TimelineProject restored=TimelineDraftStore.load(ctx);
+            assertNotNull(restored);assertEquals(5350,restored.duration());assertEquals(500,restored.cutMs(0));assertEquals(150,restored.cutMs(1));
+            assertEquals(PictureLayer.EASE_IN,restored.picture.curve);assertEquals(-.3f,restored.picture.anchorX(1000000),.000001f);
+            String bad=raw.replace("\"curve\":1","\"curve\":99");
+            assertTrue(prefs.edit().putString("draft",bad).commit());assertNull(TimelineDraftStore.load(ctx));assertEquals(bad,prefs.getString("draft",null));
+            assertTrue(TimelineDraftStore.save(ctx,base.picture(edit.picture)));assertNotNull(TimelineDraftStore.load(ctx));assertTrue(TimelineDraftStore.load(ctx).cuts.isEmpty());
+            assertTrue(TimelineDraftStore.save(ctx,base.cut(0,500)));assertNotNull(TimelineDraftStore.load(ctx));assertNull(TimelineDraftStore.load(ctx).picture);
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test public void pictureV7RoundTrip()throws Exception{
         Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
         android.content.SharedPreferences prefs=ctx.getSharedPreferences("one-track-timeline",Context.MODE_PRIVATE);

@@ -24,6 +24,16 @@ public final class PictureLayerTest{
                 ok(Math.abs(a.anchorX(time))+scale/100d<=1.000001);ok(Math.abs(a.anchorY(time))+scale/100d<=1.000001);
             }
         }
+        for(int curve=1;curve<=3;curve++){
+            PictureLayer motion=new PictureLayer("content://qa/p",2000,0,1000,500,40,80,0,0,100,100,curve,1000);
+            PictureLayer shorter=motion.fit(1200);ok(shorter.motionDuration==1000);ok(shorter.out==700);
+            for(long t=500000;t<1200000;t+=1000){ok(motion.anchorX(t)==shorter.anchorX(t));ok(motion.anchorY(t)==shorter.anchorY(t));}
+            ok(motion.anchorX(500000)<motion.anchorX(750000));ok(motion.anchorX(750000)<motion.anchorX(1250000));
+        }
+        PictureLayer eased=new PictureLayer("content://qa/p",2000,0,1000,500,40,80,0,0,100,100,PictureLayer.EASE_IN,1000);
+        ok(Math.abs(eased.anchorX(1000000)+.3f)<1e-6);
+        bad(()->new PictureLayer("content://qa/p",2000,0,1000,0,40,80,0,0,100,100,4,1000));
+        bad(()->new PictureLayer("content://qa/p",2000,0,1000,0,40,80,0,0,100,100,PictureLayer.EASE_IN,999));
         System.out.println("PASS "+checks+" picture layer assertions");
     }
 }
