@@ -13,14 +13,17 @@ final class RestorationLab {
     static final int MAX_SIDE=512, PARAMETERS=77;
     static final String DEBLUR_SHA="89e355238c2c233e6442800b0a8b3c2d1633ee6d195cdcc532a3d42a8d6dfcf4";
     static final String SR_SHA="dea96181a956528cfff99cdf94856f5b2a594ed72e467f025e0c4dab99483b01";
+    static final String REFINED_DEBLUR_SHA="1d8b2f6b4899ec41bcea862d293c652afb859e67e03417a577033574422419c5";
+    static final String REFINED_SR_SHA="972a3deaaa563a00f0d42c42c27518b13de386b2a9e07c57aacb7f70d743f0ae";
     private final float[] weights;
     private RestorationLab(float[] weights){this.weights=weights;}
-    static RestorationLab load(InputStream stream,boolean sr)throws Exception{
+    static RestorationLab load(InputStream stream,boolean sr)throws Exception{return load(stream,sr,false);}
+    static RestorationLab load(InputStream stream,boolean sr,boolean refined)throws Exception{
         ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] block=new byte[512];int n;
         while((n=stream.read(block))!=-1){if(out.size()+n>4096)throw new IOException("Oversized model");out.write(block,0,n);}
         byte[] raw=out.toByteArray();StringBuilder hex=new StringBuilder();
         for(byte v:MessageDigest.getInstance("SHA-256").digest(raw))hex.append(String.format(Locale.ROOT,"%02x",v&255));
-        if(!hex.toString().equals(sr?SR_SHA:DEBLUR_SHA))throw new IOException("Invalid model SHA-256");
+        if(!hex.toString().equals(refined?(sr?REFINED_SR_SHA:REFINED_DEBLUR_SHA):(sr?SR_SHA:DEBLUR_SHA)))throw new IOException("Invalid model SHA-256");
         String[] tokens=new String(raw,StandardCharsets.US_ASCII).trim().split("\\s+");
         if(tokens.length!=PARAMETERS)throw new IOException("Invalid model shape");
         float[] w=new float[PARAMETERS];for(int i=0;i<w.length;i++){w[i]=Float.parseFloat(tokens[i]);if(!Float.isFinite(w[i]))throw new IOException("Invalid model weight");}

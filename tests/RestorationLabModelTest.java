@@ -19,6 +19,15 @@ public final class RestorationLabModelTest {
             bad=false;try{model.infer(new float[]{Float.NaN},1,1);}catch(IllegalArgumentException expected){bad=true;}ok(bad);
             bad=false;Thread.currentThread().interrupt();try{model.infer(x,8,8);}catch(InterruptedException expected){bad=true;}finally{Thread.interrupted();}ok(bad);
         }
+        for(boolean sr:new boolean[]{false,true}){
+            String name=sr?"sr2x":"deblur";
+            RestorationLab model;
+            try(InputStream in=Files.newInputStream(root.resolve(name+"-refined.weights.txt"))){model=RestorationLab.load(in,sr,true);}
+            float[] x=new float[64];for(int i=0;i<x.length;i++)x[i]=i%8<4?.2f:.8f;
+            float[] got=model.infer(x,8,8);ok(Math.abs(got[27]-(sr?0f:.26754335f))<.000002f);ok(Math.abs(got[28]-(sr?.9894026f:.530282f))<.000002f);
+            for(float v:got)ok(Float.isFinite(v)&&v>=0&&v<=1);
+            boolean wrong=false;try(InputStream in=Files.newInputStream(root.resolve(name+".weights.txt"))){try{RestorationLab.load(in,sr,true);}catch(IOException expected){wrong=true;}}ok(wrong);
+        }
         float[] scaled=RestorationLab.bilinear2x(new float[]{0,1,0,1},2,2);
         ok(scaled.length==16);ok(Math.abs(scaled[1]-.25f)<.000001f);ok(Math.abs(scaled[2]-.75f)<.000001f);
         boolean bad=false;try{RestorationLab.bilinear2x(new float[257],257,1);}catch(IllegalArgumentException expected){bad=true;}ok(bad);

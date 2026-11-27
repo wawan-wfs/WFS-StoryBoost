@@ -22,15 +22,16 @@ class EvidenceTest(unittest.TestCase):
             "readyMs=430 durationMs=2001", "seekSettledMs=600", "seekSettledMs=1400",
             "soundtrackRms=0.05 gapRms=0.0 dip=verified", "soundtrackRms=0.05 gapRms=0.0 dip=verified",
             "dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified","dualTrackFirstRms=0.03 overlapRms=0.045 early780=0.04 early440=0.001 late780=0.04 late440=0.04 keyframe=verified",
-            "crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001","crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001"))
+            "crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001","crossfadeVerified duration=3500 midRed=127 midBlue=126 early440=0.12 early780=0.001 overlap440=0.06 overlap780=0.06 late780=0.12 late440=0.001",
+            "pipVerified before=0 early=2000 late=2000 after=0 dx=0.4 dy=0.4","pipVerified before=0 early=2000 late=2000 after=0 dx=0.4 dy=0.4"))
         self.log.write_text(self.metrics)
         self.write_xml()
 
     def write_xml(self, first="", second="", duplicate=False, omit=False):
-        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
+        cases = [f'<testcase classname="{qa.CLASS if n not in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip") else "com.wfs.storyboost.TimelineAdjustmentsQaTest"}" name="{n}">{tag}</testcase>'
                  for n, tag in zip(qa.REQUIRED, (first, second) + ("",)*(len(qa.REQUIRED)-2))]
         for i,n in enumerate(qa.REQUIRED[:len(cases)]):
-            if n in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline"):
+            if n in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility"):
                 cases[i]=cases[i].replace(qa.CLASS,"com.wfs.storyboost.RestorationLabQaTest")
         if omit:
             cases.pop()
@@ -145,6 +146,16 @@ class EvidenceTest(unittest.TestCase):
     def test_crossfade_missing_audio_ramp(self):
         self.log.write_text(self.metrics.replace('overlap440=0.06', 'overlap440=0.12'))
         with self.assertRaisesRegex(ValueError, 'crossfade'):
+            self.check()
+
+    def test_pip_missing_movement(self):
+        self.log.write_text(self.metrics.replace('dx=0.4','dx=0.0'))
+        with self.assertRaisesRegex(ValueError, 'PiP'):
+            self.check()
+
+    def test_pip_outside_range(self):
+        self.log.write_text(self.metrics.replace('before=0 early=2000','before=200 early=2000'))
+        with self.assertRaisesRegex(ValueError, 'PiP'):
             self.check()
 
     def test_wrong_api(self):

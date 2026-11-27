@@ -27,6 +27,9 @@ REQUIRED = (
     "timelineCrossfadeRendersOverlappingVideoAndAudio",
     "originalModelInferenceAndHashGate",
     "restorationLabSyntheticUiRunsOffline",
+    "refinedModelsInferenceAndOriginalCompatibility",
+    "pictureV7RoundTrip",
+    "timelinePictureLayerRendersRealMovingOverlay",
 )
 
 
@@ -40,8 +43,8 @@ def evidence(reports, log, api, commit):
     for path in files:
         for case in ET.parse(path).iter("testcase"):
             name=case.get("name")
-            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip") else CLASS)
-            if name in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline"):
+            expected_class=("com.wfs.storyboost.TimelineAdjustmentsQaTest" if name in ("legacySchemaReadOnlyAndV2RoundTrip","soundtrackAndFadeV3RoundTrip","dualTrackAndKeyframesV4RoundTrip","zoomV5RoundTrip","overlapV6RoundTrip","pictureV7RoundTrip") else CLASS)
+            if name in ("originalModelInferenceAndHashGate","restorationLabSyntheticUiRunsOffline","refinedModelsInferenceAndOriginalCompatibility"):
                 expected_class="com.wfs.storyboost.RestorationLabQaTest"
             if case.get("classname") == expected_class and name in found:
                 found[name].append(case)
@@ -86,7 +89,12 @@ def evidence(reports, log, api, commit):
                                 and .05<z<=1 and 0<=lastleak<z*.1 and a*.25<x<a*.75 and z*.25<y<z*.75
                                 for d,r,b,a,leak,x,y,z,lastleak in cross):
         raise ValueError("Missing or invalid actual crossfade pixel/PCM evidence")
+    pip_pattern=r"\bpipVerified before=(\d+) early=(\d+) late=(\d+) after=(\d+) dx="+number+" dy="+number
+    pip=[tuple(map(float,v)) for line in lines for v in re.findall(pip_pattern,line)]
+    if len(pip)!=2 or not all(before==after==0 and early>500 and late>500 and .25<dx<=1 and .25<dy<=1 for before,early,late,after,dx,dy in pip):
+        raise ValueError("Missing or invalid PiP movement pixels")
     return {"commit": commit, "api": api, "scope": "x86_64 emulator connected preview gate",
+            "picture_layer":[dict(zip(("before","early","late","after","dx","dy"),v)) for v in pip],
             "crossfade":[dict(zip(("duration_ms","mid_red","mid_blue","early440","early780","overlap440","overlap780","late780","late440"),v)) for v in cross],
             "dual_track_pcm":[{"first_rms":a,"overlap_rms":b,"early780":c,"early440":d,"late780":e,"late440":f} for a,b,c,d,e,f in dual],
             "soundtrack_pcm": [{"audible_rms":a,"gap_rms":b} for a,b in mix],

@@ -36,6 +36,22 @@ public class RestorationLabQaTest {
         float[] scaled=RestorationLab.bilinear2x(new float[]{0,1,0,1},2,2);
         assertEquals(16,scaled.length);assertEquals(.25f,scaled[1],.000001f);assertEquals(.75f,scaled[2],.000001f);
     }
+    @Test public void refinedModelsInferenceAndOriginalCompatibility()throws Exception{
+        Context ctx=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        for(boolean sr:new boolean[]{false,true}){
+            String name=sr?"sr2x":"deblur";
+            RestorationLab model;
+            try(InputStream in=ctx.getAssets().open("restoration-lab/"+name+"-refined.weights.txt")){model=RestorationLab.load(in,sr,true);}
+            float[] input=new float[64];for(int i=0;i<input.length;i++)input[i]=i%8<4?.2f:.8f;
+            long start=android.os.SystemClock.elapsedRealtimeNanos();float[] out=model.infer(input,8,8);
+            assertEquals(sr?0f:.26754335f,out[27],.000002f);assertEquals(sr?.9894026f:.530282f,out[28],.000002f);
+            for(float v:out)assertTrue(Float.isFinite(v)&&v>=0&&v<=1);
+            try(InputStream in=ctx.getAssets().open("restoration-lab/"+name+".weights.txt")){
+                try{RestorationLab.load(in,sr,true);fail("Original hash must not match refined");}catch(IOException expected){}
+            }
+            android.util.Log.i("WfsTimelinePreviewQA","refinedModel="+name+" inferenceMs="+((android.os.SystemClock.elapsedRealtimeNanos()-start)/1e6)+" parity=verified");
+        }
+    }
     private static byte[] shell(android.app.UiAutomation automation,String command)throws IOException{
         try(java.io.InputStream in=new android.os.ParcelFileDescriptor.AutoCloseInputStream(automation.executeShellCommand(command));
             java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream()){

@@ -25,6 +25,7 @@ public final class RestorationLabActivity extends Activity {
     private final ThreadPoolExecutor worker=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new LinkedBlockingQueue<>());
     private Future<?> pending;private int generation;private boolean closed;
     private TextView status;private ImageView before,after;private Button deblur,sr,demo;
+    private android.widget.CheckBox refined;
     private int dp(int n){return StudioUi.dp(this,n);}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);getWindow().setStatusBarColor(StudioUi.BG);getWindow().setNavigationBarColor(StudioUi.BG);
@@ -35,6 +36,7 @@ public final class RestorationLabActivity extends Activity {
         root.addView(StudioUi.text(this,"AI Deblur & SR 2×",25,StudioUi.TEXT,true));
         StudioUi.gap(root,this,8);root.addView(StudioUi.text(this,"Eksperimen neural asli · offline · preview maksimal 512 px. Dilatih dengan gambar sintetis, bukan model foto produksi.",13,StudioUi.MUTED,false));
         StudioUi.gap(root,this,14);
+        refined=new android.widget.CheckBox(this);refined.setText("Gunakan model refined (eksperimental)");refined.setTextColor(StudioUi.TEXT);refined.setChecked(true);root.addView(refined,new LinearLayout.LayoutParams(-1,dp(48)));
         deblur=StudioUi.button(this,"Pilih foto · Deblur",true);sr=StudioUi.button(this,"Pilih foto · SR 2×",true);demo=StudioUi.button(this,"Uji demo sintetis SR 2×",false);
         for(Button button:new Button[]{deblur,sr,demo}){root.addView(button,new LinearLayout.LayoutParams(-1,dp(52)));StudioUi.gap(root,this,7);}
         deblur.setOnClickListener(v->pick(false));sr.setOnClickListener(v->pick(true));demo.setOnClickListener(v->run(null,true));
@@ -72,6 +74,7 @@ public final class RestorationLabActivity extends Activity {
     }
     private static int channel(int v){return Math.max(0,Math.min(255,v));}
     private void run(Uri uri,boolean upscale){
+        final boolean useRefined=refined.isChecked();
         final int token=++generation;if(pending!=null)pending.cancel(true);worker.purge();
         before.setImageDrawable(null);after.setImageDrawable(null);status.setText("Inferensi CPU berlangsung…");
         pending=worker.submit(()->{
@@ -82,7 +85,7 @@ public final class RestorationLabActivity extends Activity {
                 int w=baseline.getWidth(),h=baseline.getHeight();int[] rgba=new int[w*h];baseline.getPixels(rgba,0,w,0,0,w,h);float[] y=new float[rgba.length];
                 for(int i=0;i<y.length;i++)y[i]=Math.max(0f,Math.min(1f,(.2126f*Color.red(rgba[i])+.7152f*Color.green(rgba[i])+.0722f*Color.blue(rgba[i]))/255f));
                 RestorationLab model;
-                try(InputStream stream=getAssets().open("restoration-lab/"+(upscale?"sr2x":"deblur")+".weights.txt")){model=RestorationLab.load(stream,upscale);}
+                try(InputStream stream=getAssets().open("restoration-lab/"+(upscale?"sr2x":"deblur")+(useRefined?"-refined":"")+".weights.txt")){model=RestorationLab.load(stream,upscale,useRefined);}
                 long start=SystemClock.elapsedRealtimeNanos();float[] prediction=model.infer(y,w,h);long ms=(SystemClock.elapsedRealtimeNanos()-start)/1000000L;
                 for(int i=0;i<rgba.length;i++){int delta=Math.round((prediction[i]-y[i])*255);int old=rgba[i];
                     rgba[i]=Color.argb(Color.alpha(old),channel(Color.red(old)+delta),channel(Color.green(old)+delta),channel(Color.blue(old)+delta));}
@@ -93,7 +96,7 @@ public final class RestorationLabActivity extends Activity {
                 runOnUiThread(()->{
                     if(closed||generation!=token){left.recycle();right.recycle();return;}
                     before.setImageBitmap(left);after.setImageBitmap(right);
-                    status.setText("Preview neural siap · "+w+" × "+h+" · "+ms+" ms CPU");
+                    status.setText("Preview neural siap · "+(useRefined?"Refined":"Original")+" · "+w+" × "+h+" · "+ms+" ms CPU");
                 });
             }catch(Exception|OutOfMemoryError ex){
                 runOnUiThread(()->{if(!closed&&generation==token)status.setText("Preview gagal atau dibatalkan. Media asli tetap aman.");});
