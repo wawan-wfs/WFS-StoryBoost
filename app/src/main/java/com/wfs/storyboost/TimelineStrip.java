@@ -173,7 +173,7 @@ final class TimelineStrip extends LinearLayout {
     private void showPosition(){
         overview.position(positionMs);
         String value=time(positionMs)+" / "+time(current.duration())+" • "+current.clips.size()+" klip"+
-                (current.crossfadeMs>0?" • Crossfade "+current.crossfadeMs+" ms":current.fadeMs>0?" • Dip "+current.fadeMs+" ms":"");
+                (!current.cuts.isEmpty()?" • Transisi per batas":current.crossfadeMs>0?" • Crossfade "+current.crossfadeMs+" ms":current.fadeMs>0?" • Dip "+current.fadeMs+" ms":"");
         if(!value.contentEquals(status.getText()))status.setText(value);
     }
     long currentPosition(){return positionMs;}

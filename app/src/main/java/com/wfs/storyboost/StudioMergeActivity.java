@@ -161,7 +161,10 @@ public final class StudioMergeActivity extends Activity {
             timelineButton(cutBar,"Split",this::splitAtPlayhead);
             timelineButton(cutBar,"Duplikat",this::duplicateClip);
             timelineButton(cutBar,"Fade",this::editFade);
+            LinearLayout transitionBar=row();
+            timelineButton(transitionBar,"Transisi klip →",this::editCutTransition);
             body.addView(cutBar);gap(body,7);
+            body.addView(transitionBar);gap(body,7);
             LinearLayout audioBar=row();
             timelineButton(audioBar,"＋ Audio",this::pickAudio);
             timelineButton(audioBar,"Edit audio",this::editSoundtrack);
@@ -548,6 +551,25 @@ public final class StudioMergeActivity extends Activity {
         try{editTimeline(timeline.current().duplicate(selected));}
         catch(IllegalArgumentException ex){toast(ex.getMessage());}
     }
+    private void editCutTransition(){
+        if(!canEditTimeline()||selected<0||selected+1>=clips.size()){toast("Pilih klip sebelum batas transisi.");return;}
+        TimelineProject prior=timeline.current();int index=selected;
+        int[] values={0,150,300,500,750,1000};
+        String[] labels={"Cut langsung","Crossfade 150 ms","Crossfade 300 ms","Crossfade 500 ms","Crossfade 750 ms","Crossfade 1000 ms"};
+        int checked=-1;for(int i=0;i<values.length;i++)if(values[i]==prior.cutMs(index))checked=i;
+        final int[] pending={checked};
+        new AlertDialog.Builder(this).setTitle("Klip "+(index+1)+" → "+(index+2))
+            .setMessage(null).setSingleChoiceItems(labels,checked,(d,i)->pending[0]=i)
+            .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(d,w)->{
+                if(!canEditTimeline()||timeline.current()!=prior||pending[0]<0)return;
+                TimelineProject next=prior.cut(index,values[pending[0]]);
+                if(next==prior)return;
+                if(next.duration()<prior.duration()||prior.fadeMs>0)new AlertDialog.Builder(this).setTitle("Terapkan transisi per batas?")
+                    .setMessage("Mode ini menonaktifkan dip-to-black global. Jika durasi memendek, media tambahan di luar timeline dipangkas. Undo tersedia.")
+                    .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(a,z)->{if(canEditTimeline()&&timeline.current()==prior)editTimeline(next);}).show();
+                else editTimeline(next);
+            }).show();
+    }
     private void editFade(){
         if(!canEditTimeline()||clips.size()<2){toast("Tambahkan minimal dua klip.");return;}
         final TimelineProject prior=timeline.current();
@@ -557,7 +579,7 @@ public final class StudioMergeActivity extends Activity {
         int active=prior.crossfadeMs>0?-prior.crossfadeMs:prior.fadeMs;
         for(int i=0;i<choices.length;i++)if(choices[i]==active)checked=i;
         final int[] pending={checked};
-        new AlertDialog.Builder(this).setTitle("Transisi timeline")
+        new AlertDialog.Builder(this).setTitle("Transisi global (reset pengaturan per batas)")
                 .setSingleChoiceItems(labels,checked,(d,i)->pending[0]=i)
                 .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(d,w)->{
                     if(canEditTimeline()&&timeline.current()==prior){

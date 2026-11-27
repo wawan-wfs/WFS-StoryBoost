@@ -6,16 +6,25 @@ final class OverlapPlan {
     final long[] starts,ends,overlaps;
     final long duration;
     OverlapPlan(long[] lengths,int requested){
-        if(requested<0||requested>1000)throw new IllegalArgumentException("Crossfade 0–1000 ms.");
+        this(lengths,uniform(lengths.length,requested));
+    }
+    private static int[] uniform(int n,int ms){
+        if(ms<0||ms>1000)throw new IllegalArgumentException("Crossfade 0–1000 ms.");
+        int[] cuts=new int[Math.max(0,n-1)];java.util.Arrays.fill(cuts,ms);return cuts;
+    }
+    OverlapPlan(long[] lengths,int[] requested){
+        if(requested.length!=Math.max(0,lengths.length-1))throw new IllegalArgumentException("Invalid cut count");
+        for(int ms:requested)if(ms<0||ms>1000)throw new IllegalArgumentException("Crossfade 0–1000 ms.");
         starts=new long[lengths.length];ends=new long[lengths.length];overlaps=new long[Math.max(0,lengths.length-1)];
         long position=0;
         for(int i=0;i<lengths.length;i++){
             if(lengths[i]<=0)throw new IllegalArgumentException("Invalid clip length");
-            if(i>0){overlaps[i-1]=Math.min(requested,Math.min(lengths[i-1],lengths[i])/2);position-=overlaps[i-1];}
+            if(i>0){overlaps[i-1]=Math.min(requested[i-1],Math.min(lengths[i-1],lengths[i])/2);position-=overlaps[i-1];}
             starts[i]=position;position=Math.addExact(position,lengths[i]);ends[i]=position;
         }
         duration=position;
     }
+    boolean hasOverlap(){for(long ms:overlaps)if(ms>0)return true;return false;}
     int dominant(long ms){
         if(ms<0||ms>=duration)return -1;
         for(int i=starts.length-1;i>=0;i--)if(ms>=starts[i]&&ms<ends[i])return i;

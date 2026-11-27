@@ -75,7 +75,7 @@ public final class VideoMergeEngine {
         boolean hasAudio=false,hasHdr=false;
         float maxFps=0f;
         boolean[] clipAudio=new boolean[draft.clips.size()];
-        boolean crossfade=draft.crossfadeMs>0&&draft.clips.size()>1&&draft.overlap.duration<draft.clips.stream().mapToLong(TimelineProject.Clip::length).sum();
+        boolean crossfade=draft.overlap.hasOverlap();
         AspectRatioProfile.Size canvas;
         try{
             Uri first=Uri.parse(draft.clips.get(0).uri);
