@@ -58,7 +58,7 @@ final class TimelineOverviewView extends View {
         if(model.duration()==0)return;
         paint.setColor(StudioUi.MUTED);paint.setTextSize(dp(10));
         for(int i=0;i<=4;i++){
-            long t=model.duration()*i/4;float x=x(t);paint.setColor(StudioUi.INNER);c.drawLine(x,dp(20),x,dp(125),paint);
+            long t=model.duration()*i/4;float x=x(t);paint.setColor(StudioUi.INNER);c.drawLine(x,dp(20),x,dp(145),paint);
             String text=String.format(Locale.ROOT,"%.1fs",t/1000d);
             paint.setColor(StudioUi.MUTED);float offset=i==4?paint.measureText(text):0;c.drawText(text,x-offset,dp(15),paint);
         }
@@ -70,11 +70,13 @@ final class TimelineOverviewView extends View {
         }
         PictureLayer picture=model.picture;
         lane(c,1,"PiP",picture==null?0:picture.start,picture==null?0:picture.end(),0xff8662b5);
+        PictureLayer second=model.picture2;
+        lane(c,2,"PiP 2",second==null?0:second.start,second==null?0:second.end(),0xffb86b9d);
         TimelineProject.Audio sound=model.audio,voice=model.voice;
-        lane(c,2,"Audio",sound==null?0:sound.start,sound==null?0:sound.end(),0xff26867a);
-        lane(c,3,"Voice",voice==null?0:voice.start,voice==null?0:voice.end(),0xff347d9d);
+        lane(c,3,"Audio",sound==null?0:sound.start,sound==null?0:sound.end(),0xff26867a);
+        lane(c,4,"Voice",voice==null?0:voice.start,voice==null?0:voice.end(),0xff347d9d);
         TimelineProject.Caption caption=model.caption;
-        lane(c,4,"Caption",caption==null?0:caption.in,caption==null?0:caption.out,0xff9c7344);
-        paint.setColor(0xfff5f5ff);paint.setStrokeWidth(dp(1));c.drawLine(x(touching?pending:position),dp(19),x(touching?pending:position),dp(125),paint);
+        lane(c,5,"Caption",caption==null?0:caption.in,caption==null?0:caption.out,0xff9c7344);
+        paint.setColor(0xfff5f5ff);paint.setStrokeWidth(dp(1));c.drawLine(x(touching?pending:position),dp(19),x(touching?pending:position),dp(145),paint);
     }
 }

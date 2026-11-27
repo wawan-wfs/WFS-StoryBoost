@@ -123,17 +123,18 @@ final class OverlapComposition {
         if(layer.end()<total)sequence.addItem(pad(padding,total-layer.end(),width,height,fps));
         return sequence.build();
     }
-    static VideoCompositorSettings settings(OverlapPlan plan,int width,int height,PictureLayer picture,boolean crossfade){
+    static VideoCompositorSettings settings(OverlapPlan plan,int width,int height,List<PictureLayer> pictures,boolean crossfade){
         return new VideoCompositorSettings(){
             @Override public Size getOutputSize(List<Size> inputs){return new Size(width,height);}
             @Override public OverlaySettings getOverlaySettings(int inputId,long timeUs){
-                if(picture!=null&&inputId==0){
+                if(inputId>=0&&inputId<pictures.size()){
+                    PictureLayer picture=pictures.get(inputId);
                     float scale=picture.scale/100f;
                     return new StaticOverlaySettings.Builder().setScale(scale,scale)
                             .setBackgroundFrameAnchor(picture.anchorX(timeUs),picture.anchorY(timeUs))
                             .setAlphaScale(picture.visible(timeUs)?picture.opacity/100f:0f).build();
                 }
-                int baseId=inputId-(picture==null?0:1);
+                int baseId=inputId-pictures.size();
                 return new StaticOverlaySettings.Builder().setAlphaScale(crossfade&&baseId==0?plan.alphaTop(timeUs):1f).build();
             }
         };

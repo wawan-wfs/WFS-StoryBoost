@@ -32,7 +32,7 @@ final class TimelineStrip extends LinearLayout {
     private final TextView audioLane,voiceLane;
     private final AudioWaveformView audioWave,voiceWave;
     private final java.util.function.BiConsumer<Integer,Integer> reorder;
-    private final TextView captionLane,pictureLane;
+    private final TextView captionLane,pictureLane,pictureLane2;
     private TimelineProject current=TimelineProject.empty();
     private int currentSelection=-1,zoom=1;
     private long positionMs;
@@ -92,7 +92,7 @@ final class TimelineStrip extends LinearLayout {
             public void onStopTrackingTouch(SeekBar bar){dragging=false;seek.accept(positionMs);}
         });
         overview=new TimelineOverviewView(context,ms->{positionMs=ms;scrub.setProgress(TimelineNavigation.toProgress(ms,current.duration()));showPosition();seek.accept(ms);});
-        addView(overview,new LayoutParams(-1,dp(132)));StudioUi.gap(this,context,8);
+        addView(overview,new LayoutParams(-1,dp(152)));StudioUi.gap(this,context,8);
         LinearLayout toolbar=StudioUi.row(context);
         toolbar.addView(StudioUi.text(context,"KLIP • LONG PRESS UNTUK URUTKAN",10,StudioUi.MUTED,true),new LayoutParams(0,-2,1));
         Button magnify=StudioUi.button(context,"Zoom 1×",false);
@@ -105,10 +105,12 @@ final class TimelineStrip extends LinearLayout {
         voiceLane=StudioUi.text(context,"VOICE • belum ada track",12,StudioUi.CYAN,true);
         audioWave=new AudioWaveformView(context);voiceWave=new AudioWaveformView(context);
         pictureLane=StudioUi.text(context,"PIP • belum ada overlay",12,StudioUi.LAVENDER,true);
+        pictureLane2=StudioUi.text(context,"PIP 2 • belum ada overlay",12,StudioUi.LAVENDER,true);
         captionLane=StudioUi.text(context,"CAPTION • kosong",11,StudioUi.LAVENDER,true);
         StudioUi.gap(this,context,10);addView(audioLane);addView(audioWave,new LayoutParams(-1,dp(38)));
         StudioUi.gap(this,context,8);addView(voiceLane);addView(voiceWave,new LayoutParams(-1,dp(38)));
         StudioUi.gap(this,context,8);addView(pictureLane);
+        StudioUi.gap(this,context,8);addView(pictureLane2);
         StudioUi.gap(this,context,8);addView(captionLane);
     }
     private int dp(int n){return StudioUi.dp(getContext(),n);}
@@ -120,6 +122,7 @@ final class TimelineStrip extends LinearLayout {
         voiceLane.setText(model.voice==null?"VOICE • belum ada track":"VOICE • "+time(model.voice.start)+" – "+time(model.voice.end())+" • "+model.voice.volume+"%");
         audioWave.bind(model.audio,model.duration());voiceWave.bind(model.voice,model.duration());
         pictureLane.setText(model.picture==null?"PIP • belum ada overlay":"PIP • "+time(model.picture.start)+" – "+time(model.picture.end())+" • "+model.picture.scale+"% • opacity "+model.picture.opacity+"%");
+        pictureLane2.setText(model.picture2==null?"PIP 2 • belum ada overlay":"PIP 2 • "+time(model.picture2.start)+" – "+time(model.picture2.end())+" • "+model.picture2.scale+"% • opacity "+model.picture2.opacity+"%");
         captionLane.setText(model.caption==null?"CAPTION • kosong":"CAPTION • "+time(model.caption.in)+" – "+time(model.caption.out));
         if(model.clips.isEmpty()){status.setText("Timeline kosong");selectionKey="";positionMs=0;scrub.setProgress(0);return;}
         positionMs=Math.max(0,Math.min(positionMs,model.duration()-1));showPosition();

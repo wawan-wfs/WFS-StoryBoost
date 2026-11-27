@@ -105,7 +105,7 @@ public final class VideoMergeEngine {
                 frame.add(Presentation.createForWidthAndHeight(canvas.width,canvas.height,Presentation.LAYOUT_SCALE_TO_FIT));
                 // With PiP, apply base-clip transforms before compositing so the overlay
                 // does not inherit the base clip's zoom or brightness.
-                if(draft.picture!=null&&!crossfade){
+                if(draft.hasPictures()&&!crossfade){
                     if(clip.zoomStart!=100||clip.zoomEnd!=100)frame.add((androidx.media3.effect.MatrixTransformation)timeUs->{
                         android.graphics.Matrix m=new android.graphics.Matrix();float s=clip.zoomAt(clip.in*1000L+timeUs);m.setScale(s,s);return m;});
                     if(clip.gainStart!=100||clip.gainEnd!=100)frame.add((androidx.media3.effect.RgbMatrix)(timeUs,useHdr)->{
@@ -126,15 +126,16 @@ public final class VideoMergeEngine {
                     Math.max(24,Math.min(60,Math.round(maxFps)))));}
             catch(java.io.IOException ex){throw new IllegalArgumentException("Compositor overlap tidak dapat disiapkan.",ex);}
         }else sequences.add(hasAudio?EditedMediaItemSequence.withAudioAndVideoFrom(items):EditedMediaItemSequence.withVideoFrom(items));
-        if(draft.picture!=null){
-            PictureLayer picture=draft.picture;Uri uri=Uri.parse(picture.uri);
+        int pictureIndex=0;
+        for(PictureLayer picture:draft.picturesTopFirst()){
+            Uri uri=Uri.parse(picture.uri);
             try{
                 SourceAccess.requireReadable(context,uri);
                 MediaProbe.Info input=MediaProbe.inspect(context,uri);
                 if(!input.video||picture.out>MediaProbe.duration(context,uri))throw new IllegalArgumentException("Sumber PiP berubah.");
                 if(hasHdr||input.isHdr())throw new IllegalArgumentException("PiP eksperimental memerlukan video SDR.");
                 sources.add(uri);
-                sequences.add(0,OverlapComposition.pictureSequence(context,picture,draft.duration(),canvas.width,canvas.height,
+                sequences.add(pictureIndex++,OverlapComposition.pictureSequence(context,picture,draft.duration(),canvas.width,canvas.height,
                         Math.max(24,Math.min(60,Math.round(maxFps)))));
             }catch(Exception ex){throw new IllegalArgumentException("PiP tidak dapat disiapkan: "+ex.getMessage(),ex);}
         }
@@ -163,14 +164,14 @@ public final class VideoMergeEngine {
             }catch(Exception ex){throw new IllegalArgumentException("Soundtrack tidak dapat dibaca. "+ex.getMessage(),ex);}
         }
         Composition.Builder builder=new Composition.Builder(sequences);
-        if(crossfade||draft.picture!=null)builder.setVideoCompositorSettings(OverlapComposition.settings(draft.overlap,canvas.width,canvas.height,draft.picture,crossfade));
+        if(crossfade||draft.hasPictures())builder.setVideoCompositorSettings(OverlapComposition.settings(draft.overlap,canvas.width,canvas.height,draft.picturesTopFirst(),crossfade));
         List<Effect> globalEffects=new ArrayList<>();
-        if(!crossfade&&draft.picture==null&&draft.hasZoom())globalEffects.add((androidx.media3.effect.MatrixTransformation)timeUs->{
+        if(!crossfade&&!draft.hasPictures()&&draft.hasZoom())globalEffects.add((androidx.media3.effect.MatrixTransformation)timeUs->{
             android.graphics.Matrix matrix=new android.graphics.Matrix();float scale=draft.zoomAtUs(timeUs);matrix.setScale(scale,scale);return matrix;
         });
-        if(!crossfade&&((draft.picture==null&&draft.hasKeyframes())||(draft.fadeMs>0&&draft.clips.size()>1))){
+        if(!crossfade&&((!draft.hasPictures()&&draft.hasKeyframes())||(draft.fadeMs>0&&draft.clips.size()>1))){
             globalEffects.add((androidx.media3.effect.RgbMatrix)(timeUs,useHdr)->{
-                float g=draft.fadeGain(timeUs)*(draft.picture==null?draft.gainAtUs(timeUs):1f);
+                float g=draft.fadeGain(timeUs)*(!draft.hasPictures()?draft.gainAtUs(timeUs):1f);
                 return new float[]{g,0,0,0,0,g,0,0,0,0,g,0,0,0,0,1};
             });
         }
