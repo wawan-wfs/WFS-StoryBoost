@@ -32,6 +32,9 @@ public final class TimelineAdjustmentsQaTest {
             assertTrue(prefs.edit().putString("draft",bad.toString()).commit());assertNull(TimelineDraftStore.load(ctx));
             assertTrue(TimelineDraftStore.save(ctx,project.picture(null)));loaded=TimelineDraftStore.load(ctx);assertNotNull(loaded);assertNull(loaded.picture);assertNotNull(loaded.picture2);
             assertTrue(TimelineDraftStore.save(ctx,project.picture2(null)));assertEquals(7,new JSONObject(prefs.getString("draft",null)).getInt("version"));
+            TimelineProject curved=base.append(TimelineProject.Clip.create("content://qa/c",2000,0,2000)).cut(0,500,3);
+            assertTrue(TimelineDraftStore.save(ctx,curved));assertEquals(9,new JSONObject(prefs.getString("draft",null)).getInt("version"));
+            assertEquals(3,TimelineDraftStore.load(ctx).cutCurve(0));assertNull(TimelineDraftStore.load(ctx).picture2);
         }finally{TimelineDraftStore.clear(ctx);}
     }
     @Test public void cutAndCurveV8RoundTrip()throws Exception{

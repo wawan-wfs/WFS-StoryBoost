@@ -163,6 +163,7 @@ public final class StudioMergeActivity extends Activity {
             timelineButton(cutBar,"Fade",this::editFade);
             LinearLayout transitionBar=row();
             timelineButton(transitionBar,"Transisi klip →",this::editCutTransition);
+            timelineButton(transitionBar,"Kurva transisi",this::editTransitionCurve);
             body.addView(cutBar);gap(body,7);
             body.addView(transitionBar);gap(body,7);
             LinearLayout audioBar=row();
@@ -566,12 +567,23 @@ public final class StudioMergeActivity extends Activity {
             .setMessage(null).setSingleChoiceItems(labels,checked,(d,i)->pending[0]=i)
             .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(d,w)->{
                 if(!canEditTimeline()||timeline.current()!=prior||pending[0]<0)return;
-                TimelineProject next=prior.cut(index,values[pending[0]]);
+                TimelineProject next=prior.cut(index,values[pending[0]],values[pending[0]]==0?0:prior.cutCurve(index));
                 if(next==prior)return;
                 if(next.duration()<prior.duration()||prior.fadeMs>0)new AlertDialog.Builder(this).setTitle("Terapkan transisi per batas?")
                     .setMessage("Mode ini menonaktifkan dip-to-black global. Jika durasi memendek, media tambahan di luar timeline dipangkas. Undo tersedia.")
                     .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(a,z)->{if(canEditTimeline()&&timeline.current()==prior)editTimeline(next);}).show();
                 else editTimeline(next);
+            }).show();
+    }
+    private void editTransitionCurve(){
+        if(!canEditTimeline()||selected<0||selected+1>=clips.size()){toast("Pilih klip sebelum batas transisi.");return;}
+        TimelineProject prior=timeline.current();int index=selected;
+        if(prior.cutMs(index)==0){toast("Aktifkan crossfade terlebih dahulu.");return;}
+        int[] pending={prior.cutCurve(index)};
+        new AlertDialog.Builder(this).setTitle("Kurva crossfade visual · audio linear")
+            .setSingleChoiceItems(new String[]{"Linear","Ease-in","Ease-out","Smoothstep"},pending[0],(d,i)->pending[0]=i)
+            .setNegativeButton("Batal",null).setPositiveButton("Terapkan",(d,w)->{
+                if(canEditTimeline()&&timeline.current()==prior)editTimeline(prior.cut(index,prior.cutMs(index),pending[0]));
             }).show();
     }
     private void editFade(){

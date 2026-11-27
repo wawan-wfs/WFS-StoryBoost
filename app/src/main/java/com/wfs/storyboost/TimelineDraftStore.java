@@ -66,16 +66,17 @@ final class TimelineDraftStore {
                 picture=new PictureLayer(a.getString("uri"),strictLong(a,"duration"),strictLong(a,"inMs"),strictLong(a,"outMs"),
                         strictLong(a,"startMs"),strictInt(a,"scale"),strictInt(a,"opacity"),strictInt(a,"xStart"),strictInt(a,"yStart"),strictInt(a,"xEnd"),strictInt(a,"yEnd"),version>=8?strictInt(a,"curve"):PictureLayer.LINEAR,version>=8?strictLong(a,"motionDuration"):strictLong(a,"outMs")-strictLong(a,"inMs"));
             }
-            PictureLayer picture2=version>=9?readPicture(j.getJSONObject("picture2"),version):null;
+            PictureLayer picture2=version>=9&&j.has("picture2")?readPicture(j.getJSONObject("picture2"),version):null;
             ArrayList<CutTransition> cuts=new ArrayList<>();
             if(version>=8){
                 JSONArray list=j.getJSONArray("cuts");
                 if(list.length()>Math.max(0,clips.size()-1)||(version==8&&list.length()==0&&(picture==null||picture.curve==PictureLayer.LINEAR)))throw new JSONException("Invalid cut count");
                 for(int i=0;i<list.length();i++){
                     JSONObject entry=list.getJSONObject(i);
-                    cuts.add(new CutTransition(entry.getString("left"),entry.getString("right"),strictInt(entry,"ms")));
+                    cuts.add(new CutTransition(entry.getString("left"),entry.getString("right"),strictInt(entry,"ms"),version>=9?strictInt(entry,"curve"):0));
                 }
             }
+            if(version==9&&picture2==null&&cuts.stream().noneMatch(cut->cut.curve!=0))throw new JSONException("Invalid v9 draft");
             return new TimelineProject(clips,caption,strictInt(j,"quality"),audio,voice,fade,version>=6?strictInt(j,"crossfadeMs"):0,picture,cuts,picture2);
         }catch(JSONException|IllegalArgumentException|ClassCastException corrupt){return null;}
     }
@@ -109,7 +110,7 @@ final class TimelineDraftStore {
 
     static boolean save(Context c,TimelineProject project){
         try{
-            int schema=project.picture2!=null?VERSION:!project.cuts.isEmpty()||(project.picture!=null&&project.picture.curve!=PictureLayer.LINEAR)?8:project.picture!=null?7:project.crossfadeMs>0?6:project.hasZoom()?5:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
+            int schema=project.picture2!=null||project.hasCurvedCuts()?VERSION:!project.cuts.isEmpty()||(project.picture!=null&&project.picture.curve!=PictureLayer.LINEAR)?8:project.picture!=null?7:project.crossfadeMs>0?6:project.hasZoom()?5:project.voice!=null||project.hasKeyframes()?4:project.audio!=null||project.fadeMs!=0?3:2;
             JSONArray entries=new JSONArray();
             for(TimelineProject.Clip clip:project.clips){
                 JSONObject entry=new JSONObject().put("id",clip.id).put("uri",clip.uri)
@@ -126,7 +127,7 @@ final class TimelineDraftStore {
                     .put("quality",project.quality);
             if(schema>=6)doc.put("crossfadeMs",project.crossfadeMs);
             if(schema>=8){
-                JSONArray cuts=new JSONArray();for(CutTransition cut:project.cuts)cuts.put(new JSONObject().put("left",cut.left).put("right",cut.right).put("ms",cut.ms));doc.put("cuts",cuts);
+                JSONArray cuts=new JSONArray();for(CutTransition cut:project.cuts){JSONObject item=new JSONObject().put("left",cut.left).put("right",cut.right).put("ms",cut.ms);if(schema>=9)item.put("curve",cut.curve);cuts.put(item);}doc.put("cuts",cuts);
             }
             if(project.picture!=null)doc.put("picture",writePicture(project.picture,schema));
             if(project.picture2!=null)doc.put("picture2",writePicture(project.picture2,schema));

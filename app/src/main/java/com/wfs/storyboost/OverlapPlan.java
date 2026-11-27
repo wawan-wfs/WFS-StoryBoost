@@ -5,6 +5,7 @@ package com.wfs.storyboost;
 final class OverlapPlan {
     final long[] starts,ends,overlaps;
     final long duration;
+    private final int[] curves;
     OverlapPlan(long[] lengths,int requested){
         this(lengths,uniform(lengths.length,requested));
     }
@@ -12,9 +13,12 @@ final class OverlapPlan {
         if(ms<0||ms>1000)throw new IllegalArgumentException("Crossfade 0–1000 ms.");
         int[] cuts=new int[Math.max(0,n-1)];java.util.Arrays.fill(cuts,ms);return cuts;
     }
-    OverlapPlan(long[] lengths,int[] requested){
+    OverlapPlan(long[] lengths,int[] requested){this(lengths,requested,new int[requested.length]);}
+    OverlapPlan(long[] lengths,int[] requested,int[] curves){
         if(requested.length!=Math.max(0,lengths.length-1))throw new IllegalArgumentException("Invalid cut count");
         for(int ms:requested)if(ms<0||ms>1000)throw new IllegalArgumentException("Crossfade 0–1000 ms.");
+        if(curves.length!=requested.length)throw new IllegalArgumentException("Invalid curve count");
+        this.curves=curves.clone();for(int i=0;i<curves.length;i++)if(curves[i]<0||curves[i]>3||(requested[i]==0&&curves[i]!=0))throw new IllegalArgumentException("Invalid curve");
         starts=new long[lengths.length];ends=new long[lengths.length];overlaps=new long[Math.max(0,lengths.length-1)];
         long position=0;
         for(int i=0;i<lengths.length;i++){
@@ -37,11 +41,14 @@ final class OverlapPlan {
             if(timeUs<start||timeUs>=end)continue;
             long in=i==0?0:overlaps[i-1]*1000L,out=i==overlaps.length?0:i<overlaps.length?overlaps[i]*1000L:0;
             float a=1;
-            if(in>0&&timeUs<start+in)a=Math.min(a,(float)(timeUs-start)/in);
-            if(out>0&&timeUs>=end-out)a=Math.min(a,(float)(end-timeUs)/out);
+            if(in>0&&timeUs<start+in)a=Math.min(a,ease(i-1,(float)(timeUs-start)/in));
+            if(out>0&&timeUs>=end-out)a=Math.min(a,1-ease(i,(float)(timeUs-(end-out))/out));
             return a;
         }
         return 0;
+    }
+    private float ease(int cut,float t){
+        switch(curves[cut]){case 1:return t*t;case 2:return t*(2-t);case 3:return t*t*(3-2*t);default:return t;}
     }
     long fadeIn(int index){return index==0?0:overlaps[index-1];}
     long fadeOut(int index){return index<overlaps.length?overlaps[index]:0;}

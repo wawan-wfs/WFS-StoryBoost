@@ -138,24 +138,32 @@ final class TimelineProject {
     }
     static TimelineProject empty(){return new TimelineProject(Collections.emptyList(),null,1);}
     private static OverlapPlan plan(List<Clip> items,int ms,List<CutTransition> cuts){
-        long[] lengths=new long[items.size()];int[] requested=new int[Math.max(0,items.size()-1)];
+        long[] lengths=new long[items.size()];int[] requested=new int[Math.max(0,items.size()-1)],curves=new int[requested.length];
         for(int i=0;i<lengths.length;i++)lengths[i]=items.get(i).length();
         java.util.Arrays.fill(requested,ms);
-        for(int i=0;i<requested.length;i++)for(CutTransition cut:cuts)if(cut.matches(items.get(i).id,items.get(i+1).id))requested[i]=cut.ms;
-        return new OverlapPlan(lengths,requested);
+        for(int i=0;i<requested.length;i++)for(CutTransition cut:cuts)if(cut.matches(items.get(i).id,items.get(i+1).id)){requested[i]=cut.ms;curves[i]=cut.curve;}
+        return new OverlapPlan(lengths,requested,curves);
     }
     int cutMs(int index){
         if(index<0||index+1>=clips.size())throw new IllegalArgumentException("Pilih batas klip.");
         for(CutTransition cut:cuts)if(cut.matches(clips.get(index).id,clips.get(index+1).id))return cut.ms;
         return crossfadeMs;
     }
-    TimelineProject cut(int index,int ms){
+    int cutCurve(int index){
+        if(index<0||index+1>=clips.size())throw new IllegalArgumentException("Pilih batas klip.");
+        for(CutTransition cut:cuts)if(cut.matches(clips.get(index).id,clips.get(index+1).id))return cut.curve;
+        return 0;
+    }
+    boolean hasCurvedCuts(){for(CutTransition cut:cuts)if(cut.curve!=0)return true;return false;}
+    TimelineProject cut(int index,int ms){return cut(index,ms,0);}
+    TimelineProject cut(int index,int ms,int curve){
         if(index<0||index+1>=clips.size()||ms<0||ms>1000)throw new IllegalArgumentException("Transisi tidak valid.");
-        if(fadeMs==0&&cutMs(index)==ms)return this;
+        if(curve<0||curve>3||(ms==0&&curve!=0))throw new IllegalArgumentException("Kurva transisi tidak valid.");
+        if(fadeMs==0&&cutMs(index)==ms&&cutCurve(index)==curve)return this;
         ArrayList<CutTransition> next=new ArrayList<>(cuts);
         String left=clips.get(index).id,right=clips.get(index+1).id;
         next.removeIf(cut->cut.matches(left,right));
-        if(ms!=crossfadeMs)next.add(new CutTransition(left,right,ms));
+        if(ms!=crossfadeMs||curve!=0)next.add(new CutTransition(left,right,ms,curve));
         return fitProject(clips,0,crossfadeMs,next);
     }
     long duration(){return overlap.duration;}

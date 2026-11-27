@@ -29,6 +29,14 @@ public final class OverlapPlanTest {
         ok(model.duration()==3500);ok(model.audio.out==3500);ok(model.startOf(1)==1500);
         ok(model.fade(300).duration()==4000);ok(model.fade(300).crossfadeMs==0);ok(model.crossfade(500)==model);
         ok(model.duplicate(0).crossfadeMs==500);ok(model.zoom(0,50,150).crossfadeMs==500);
+        for(int curve=0;curve<4;curve++){
+            OverlapPlan curved=new OverlapPlan(new long[]{2000,2000,2000},new int[]{500,500},new int[]{curve,curve});
+            float expected=curve==1?.0625f:curve==2?.4375f:curve==3?.15625f:.25f;
+            ok(Math.abs(curved.alphaTop(1625000)-(1-expected))<.000001);
+            ok(Math.abs(curved.alphaTop(3125000)-expected)<.000001);
+            for(long t=1500000;t<2000000;t+=1000)ok(curved.alphaTop(t)>=curved.alphaTop(t+1000));
+            for(long t=3000000;t<3500000;t+=1000)ok(curved.alphaTop(t)<=curved.alphaTop(t+1000));
+        }
         System.out.println("PASS "+count+" overlap schedule assertions");
     }
 }

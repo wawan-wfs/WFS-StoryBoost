@@ -727,7 +727,7 @@ public class VideoMediaQaTest {
             .append(TimelineProject.Clip.create(red.toString(),2000,0,2000))
             .append(TimelineProject.Clip.create(blue.toString(),2000,0,2000))
             .append(TimelineProject.Clip.create(red.toString(),2000,0,2000))
-            .cut(0,500).picture(new PictureLayer(red.toString(),2000,0,1500,1500,35,50,100,0,100,0,PictureLayer.SMOOTH,1500));
+            .cut(0,500,3).picture(new PictureLayer(red.toString(),2000,0,1500,1500,35,50,100,0,100,0,PictureLayer.SMOOTH,1500));
         assertEquals(5500,project.duration());assertEquals(3500,project.startOf(2));assertEquals(0,project.cutMs(1));
         File output=null,preview=null;
         try{
@@ -744,6 +744,8 @@ public class VideoMediaQaTest {
                 int mixRed,mixBlue,pipRed,pipBlue,baseRed,baseBlue,finalRed,finalBlue;
                 try(MediaMetadataRetriever reader=new MediaMetadataRetriever()){
                     reader.setDataSource(file.getAbsolutePath());
+                    int quarter=sampleColor(reader,1625000,.5,.5);
+                    assertTrue("Smoothstep quarter must favor outgoing frame",android.graphics.Color.red(quarter)>195&&android.graphics.Color.blue(quarter)<65);
                     int mixed=sampleColor(reader,1750000,.5,.5),overlay=sampleColor(reader,2500000,.8,.2),
                         base=sampleColor(reader,2500000,.5,.5),end=sampleColor(reader,4500000,.5,.5);
                     mixRed=android.graphics.Color.red(mixed);mixBlue=android.graphics.Color.blue(mixed);
