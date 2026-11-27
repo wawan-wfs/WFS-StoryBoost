@@ -91,7 +91,8 @@ final class TimelineStrip extends LinearLayout {
             }
             public void onStopTrackingTouch(SeekBar bar){dragging=false;seek.accept(positionMs);}
         });
-        overview=new TimelineOverviewView(context);addView(overview,new LayoutParams(-1,dp(132)));StudioUi.gap(this,context,8);
+        overview=new TimelineOverviewView(context,ms->{positionMs=ms;scrub.setProgress(TimelineNavigation.toProgress(ms,current.duration()));showPosition();seek.accept(ms);});
+        addView(overview,new LayoutParams(-1,dp(132)));StudioUi.gap(this,context,8);
         LinearLayout toolbar=StudioUi.row(context);
         toolbar.addView(StudioUi.text(context,"KLIP • LONG PRESS UNTUK URUTKAN",10,StudioUi.MUTED,true),new LayoutParams(0,-2,1));
         Button magnify=StudioUi.button(context,"Zoom 1×",false);

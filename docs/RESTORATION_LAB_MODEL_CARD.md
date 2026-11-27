@@ -23,3 +23,6 @@ Three photo references from scikit-image 0.26.0 documented CC0: camera (Lav Vars
 | cat | 31.144/.85998 | 31.213/.86323 | 34.317/.92820 | 34.429/.93517 |
 | brick | 27.153/.83836 | 27.620/.84578 | 37.045/.97279 | 37.104/.97475 |
 Camera Deblur SSIM regresses. No production activation, no physical ARM64 or natural blur claim. Reproduce using scripts/refine_restoration_lab.py and scripts/benchmark_restoration_photos.py; use separate output dir and original assets; dependencies torch, numpy, pillow and scikit-image on host only.
+
+## Beta23 memory-bounded inference
+All four pinned models unchanged. Exact tiled CPU convolution uses core 128 and two-pixel halo, replicated outer padding, 1024px experimental preview. Hidden activation array is at most 132*132*4 floats (~272 KiB), versus 16 MiB for 1024x1024 untiled; full input/output and bitmap buffers still scale with image size. Host test compared 337948 float values bit-identically across four models and five shapes, plus two 1024x720 refined inferences (52.941/86.445ms single host samples) and cancellation. No new quality training/claim, no physical ARM64 results, prior photo SSIM limitations unchanged. Device tests mandatory but pending.

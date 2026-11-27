@@ -1,5 +1,10 @@
 # WFS StoryBoost changelog
 
+## Beta23 integrated candidate
+- Stable per-cut crossfade overrides and mixed hard cuts, v8 draft migration, nonlinear PiP motion with trim-stable timing, direct timeline scrub.
+- Mandatory decoded three-clip crossfade+PiP pixel/PCM test and API35 Android 720p preview/export 2/10/30s benchmark with sampled PSS and actual bitrate.
+- Tiled 1024px Restoration Lab, exact seam parity across four pinned models; local standalone 1,516,892 assertions (mostly pixel checks), no new weights or production quality claim. Full device acceptance pending.
+
 ## Beta22 integrated candidate
 - Beta20 accepted 4/4. Beta21 both connected suites and actual Android crossfade evidence passed; jobs failed screenshot extraction after package removal. Repair with shell-owned capture and exact SHA/PNG gate.
 - Timed animated PiP layer, v7 drafts, native editing and proportional lane overview, decoded motion/audio isolation, UI and force-stop tests.

@@ -114,13 +114,13 @@ public final class StudioHomeActivity extends Activity {
         aiLp.leftMargin=d(10);third.addView(ai,aiLp);
         content.addView(third);
         gap(content,10);
-        content.addView(tile("▤","Timeline Studio","Klip, soundtrack, voice, keyframe dan caption",0xFF6855BE,
+        content.addView(tile("▤","Timeline Studio","Multitrack • PiP • transisi per klip • keyframe",0xFF6855BE,
                 ()->startActivity(new Intent(this,StudioMergeActivity.class)
                         .putExtra(StudioMergeActivity.EXTRA_TIMELINE,true))),
                 new LinearLayout.LayoutParams(-1,d(104)));
         gap(content,19);
 
-        content.addView(tile("✦","Restoration Lab","Deblur & SR 2× neural eksperimental · offline",0xFF2D988F,
+        content.addView(tile("✦","Restoration Lab","Deblur & SR 2× • tiled 1.024 px • offline",0xFF2D988F,
                 ()->startActivity(new Intent(this,RestorationLabActivity.class))),new LinearLayout.LayoutParams(-1,d(92)));gap(content,12);
         content.addView(text("Format Cepat",21,TEXT,true));gap(content,9);
         LinearLayout formats=StudioUi.row(this);
