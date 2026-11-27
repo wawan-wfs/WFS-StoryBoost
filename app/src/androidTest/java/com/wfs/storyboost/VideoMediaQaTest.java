@@ -666,6 +666,29 @@ public class VideoMediaQaTest {
             assertArrayEquals(hash,hashSource(source));
         }finally{TimelineDraftStore.clear(ctx);}
     }
+    @Test(timeout=90000)
+    public void timelinePictureLayerUiStagesUndoAndRecreate()throws Exception{
+        Uri a=importFixture("qa-crossfade-red.mp4"),b=importFixture("qa-crossfade-blue.mp4");
+        byte[] sha=hashSource(b);
+        TimelineProject draft=TimelineProject.empty().append(TimelineProject.Clip.create(a.toString(),2000,0,2000))
+            .picture(new PictureLayer(b.toString(),2000,0,1000,500,40,100,0,0,100,100));
+        assertTrue(TimelineDraftStore.save(ctx,draft));
+        Intent open=new Intent(ctx,StudioMergeActivity.class).putExtra(StudioMergeActivity.EXTRA_TIMELINE,true);
+        try(ActivityScenario<StudioMergeActivity> activity=ActivityScenario.launch(open)){
+            tapTimelineControl("Edit PiP");
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withContentDescription("PiP ukuran (20–60%)"))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(androidx.test.espresso.action.ViewActions.scrollTo(),
+                    androidx.test.espresso.action.ViewActions.replaceText("50"),androidx.test.espresso.action.ViewActions.closeSoftKeyboard());
+            assertEquals(40,TimelineDraftStore.load(ctx).picture.scale);
+            androidx.test.espresso.Espresso.onView(androidx.test.espresso.matcher.ViewMatchers.withId(android.R.id.button1))
+                .inRoot(androidx.test.espresso.matcher.RootMatchers.isDialog()).perform(androidx.test.espresso.action.ViewActions.click());
+            assertEquals(50,TimelineDraftStore.load(ctx).picture.scale);
+            tapTimelineControl("Undo");assertEquals(40,TimelineDraftStore.load(ctx).picture.scale);
+            tapTimelineControl("Redo");assertEquals(50,TimelineDraftStore.load(ctx).picture.scale);
+            activity.recreate();assertEquals(50,TimelineDraftStore.load(ctx).picture.scale);
+            assertArrayEquals(sha,hashSource(b));
+        }finally{TimelineDraftStore.clear(ctx);}
+    }
     @Test(timeout=300000)
     public void timelinePictureLayerRendersRealMovingOverlay()throws Exception{
         Uri red=importFixture("qa-crossfade-red.mp4"),blue=importFixture("qa-crossfade-blue.mp4");

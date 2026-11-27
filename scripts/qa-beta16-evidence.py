@@ -30,6 +30,7 @@ REQUIRED = (
     "refinedModelsInferenceAndOriginalCompatibility",
     "pictureV7RoundTrip",
     "timelinePictureLayerRendersRealMovingOverlay",
+    "timelinePictureLayerUiStagesUndoAndRecreate",
 )
 
 

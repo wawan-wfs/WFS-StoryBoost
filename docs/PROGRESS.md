@@ -2,6 +2,10 @@
 
 This is a **feature roadmap coverage estimate** for the target v3.0, not a claim of tested production quality. Each checkbox counts as one module. Implemented means source code is present and the project builds; feature correctness still requires end-to-end device tests.
 
+## Beta22 integrated candidate
+
+Beta20 accepted 4/4; Beta21 actual connected crossfade and original model gates pass both APIs but full job acceptance blocked by screenshot extraction. Beta22 fixes screenshot path, adds PiP/v7 and refined lab with real host evidence. Keep previous 23/32 roadmap count until independently recounted. See BETA22_QA.md.
+
 ## Beta21 integrated candidate
 
 Beta20 API35 full acceptance passed, API29 pending at checkpoint. Candidate adds experimental Android compositor and original offline Restoration Lab with actual local training/inference evidence. Device gates still pending; roadmap remains 23/32 until independently accepted module recount. See BETA21_QA.md and RESTORATION_LAB_MODEL_CARD.md.

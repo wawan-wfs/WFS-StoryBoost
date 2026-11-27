@@ -13,3 +13,13 @@ Actual host results: global MSE-derived PSNR in dB, not per-image mean:
 | SR2x | 25.8370 | 26.8655 | 24/24 | +0.56218 dB |
 
 PyTorch 64x64 batch-24 elapsed per image ~0.514ms / 0.104ms on this host only, not Android or end-to-end. Java first-run full 64x64 inference ~7.80ms / 5.87ms, all 4096 outputs compared to PyTorch max absolute error 5.96e-8 / 1.19e-7. 144 local model assertions pass including SHA rejection, finite bounds, interruption and bilinear shape. No production activation: Deblur improvement is weak and some cases degrade. Need bicubic and real consented photo comparisons, independent test corpora, SSIM, perceptual fidelity, latency/PSS on physical ARM64, no ringing/face drift, full-res tiling and stable quality thresholds. Existing DnCNN remains separate. NAFNet/Real-ESRGAN candidates not bundled or licensed by this work.
+
+## Beta22 refined experiment
+Same 77-param architecture, 192 new training images (seed 222), 1200 Adam fine-tune steps, 48 new holdout cases (seed 12222), starting from exact Beta21 weights. SHA refined Deblur 1d8b2f6b4899ec41bcea862d293c652afb859e67e03417a577033574422419c5; SR2x 972a3deaaa563a00f0d42c42c27518b13de386b2a9e07c57aacb7f70d743f0ae. Original weights retained. Global PSNR Deblur input 23.79775, original 23.86445, refined 24.12354 (48/48 improve vs original, 47/48 vs input; worst -0.04771 dB). SR bilinear 25.36356, bicubic 26.37532, original 26.43956, refined 26.82436 (47/48 vs original; 48/48 vs input). Java parity refined max error 5.96e-8 and 2.384e-7, 4096 pixels each, host only. 
+Three photo references from scikit-image 0.26.0 documented CC0: camera (Lav Varshney), cat (Stefan van der Walt), brick (CC0Textures), https://scikit-image.org/docs/stable/api/skimage.data.html. Local controlled luma blur/downsampling, not actual motion blur. PSNR/SSIM:
+| Photo | Deblur degraded | Deblur refined | SR bicubic | SR refined |
+|---|---|---|---|---|
+| camera | 26.276/.81473 | 26.388/.78836 | 30.103/.88074 | 30.287/.88905 |
+| cat | 31.144/.85998 | 31.213/.86323 | 34.317/.92820 | 34.429/.93517 |
+| brick | 27.153/.83836 | 27.620/.84578 | 37.045/.97279 | 37.104/.97475 |
+Camera Deblur SSIM regresses. No production activation, no physical ARM64 or natural blur claim. Reproduce using scripts/refine_restoration_lab.py and scripts/benchmark_restoration_photos.py; use separate output dir and original assets; dependencies torch, numpy, pillow and scikit-image on host only.

@@ -44,11 +44,14 @@ jobs:
           python3 tests/test_beta16_evidence.py -v
           bash tests/test_beta16_wrapper.sh
           python3 tests/test_restoration_benchmark.py -v
+          python3 tests/test_restoration_screenshot.py -v
           python3 scripts/restoration_benchmark.py --out "$RUNNER_TEMP/restoration-baseline" > /dev/null
       - name: Crossfade reference host media oracle
         run: |
           command -v ffmpeg && command -v ffprobe || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg)
           python3 scripts/crossfade_reference.py --out "$RUNNER_TEMP/crossfade-reference"
+          python3 scripts/benchmark_hd_host.py --out "$RUNNER_TEMP/hd-reference"
+          cp "$RUNNER_TEMP/hd-reference/hd-report.json" "$RUNNER_TEMP/crossfade-reference/hd-report.json"
       - name: Upload host overlap reference (not Android)
         uses: actions/upload-artifact@v4
         with:
@@ -262,10 +265,7 @@ jobs:
             adb pull /data/local/tmp/wfs-restoration-lab.png qa-beta16-preview/restoration-lab.png
             python3 scripts/verify-restoration-screenshot.py qa-beta16-preview/restoration-lab.png qa-beta16-preview/preview.log
             adb shell rm -f /data/local/tmp/wfs-restoration-lab.png
-            # Gradle may uninstall the APK pair after connected tests. Restore the exact
-            # already-built APKs before running independent process-death instrumentation.
-            adb install -r app/build/outputs/apk/debug/app-x86_64-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            # qa-process-death-local.sh reinstalls the exact built APK pair itself.
             bash scripts/qa-process-death-local.sh
             bash scripts/qa-process-death-timeline.sh
             bash scripts/qa-process-death-pending.sh

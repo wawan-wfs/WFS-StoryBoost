@@ -28,6 +28,7 @@ final class TimelineStrip extends LinearLayout {
     private final IntConsumer select;
     private String selectionKey="";
     private final SeekBar scrub;
+    private final TimelineOverviewView overview;
     private final TextView audioLane,voiceLane;
     private final AudioWaveformView audioWave,voiceWave;
     private final java.util.function.BiConsumer<Integer,Integer> reorder;
@@ -90,8 +91,9 @@ final class TimelineStrip extends LinearLayout {
             }
             public void onStopTrackingTouch(SeekBar bar){dragging=false;seek.accept(positionMs);}
         });
+        overview=new TimelineOverviewView(context);addView(overview,new LayoutParams(-1,dp(132)));StudioUi.gap(this,context,8);
         LinearLayout toolbar=StudioUi.row(context);
-        toolbar.addView(StudioUi.text(context,"VIDEO / AUDIO / CAPTION",10,StudioUi.MUTED,true),new LayoutParams(0,-2,1));
+        toolbar.addView(StudioUi.text(context,"KLIP • LONG PRESS UNTUK URUTKAN",10,StudioUi.MUTED,true),new LayoutParams(0,-2,1));
         Button magnify=StudioUi.button(context,"Zoom 1×",false);
         magnify.setOnClickListener(v->{zoom=zoom==3?1:zoom+1;magnify.setText("Zoom "+zoom+"×");bind(current,currentSelection);});
         toolbar.addView(magnify,new LayoutParams(dp(100),dp(48)));addView(toolbar);
@@ -112,7 +114,7 @@ final class TimelineStrip extends LinearLayout {
     private static String time(long ms){return String.format(Locale.ROOT,"%02d:%02d.%03d",ms/60000,ms/1000%60,ms%1000);}
     void bind(TimelineProject model,int selected){
         cancelThumbnails();current=model;currentSelection=selected;track.removeAllViews();
-        scrub.setEnabled(!model.clips.isEmpty());
+        scrub.setEnabled(!model.clips.isEmpty());overview.bind(model,selected);
         audioLane.setText(model.audio==null?"AUDIO • belum ada soundtrack":"AUDIO • "+time(model.audio.start)+" – "+time(model.audio.end())+" • "+model.audio.volume+"%");
         voiceLane.setText(model.voice==null?"VOICE • belum ada track":"VOICE • "+time(model.voice.start)+" – "+time(model.voice.end())+" • "+model.voice.volume+"%");
         audioWave.bind(model.audio,model.duration());voiceWave.bind(model.voice,model.duration());
@@ -169,6 +171,7 @@ final class TimelineStrip extends LinearLayout {
         DragToken(TimelineProject p,int i){project=p;index=i;}
     }
     private void showPosition(){
+        overview.position(positionMs);
         String value=time(positionMs)+" / "+time(current.duration())+" • "+current.clips.size()+" klip"+
                 (current.crossfadeMs>0?" • Crossfade "+current.crossfadeMs+" ms":current.fadeMs>0?" • Dip "+current.fadeMs+" ms":"");
         if(!value.contentEquals(status.getText()))status.setText(value);

@@ -12,3 +12,6 @@ Crossfade overlapping video/audio not directly supported by Media3 Composition (
 ## Actual run 45847642066 checkpoint
 
 Build and API35 smoke PASS; host 477 checks (159+62+12+165+50+21+5+3), host overlap reference PASS output 3.51s SHA-256 38d848c7804e2634dc36f0fc27f873d09a262fb31b4b9ac9e58f14828a0cb1f9. API35 full instrumented job PASS (87 reported by Gradle, not unique XML count), preview/export first RMS 0.030774698703875836, overlap RMS 0.043498774561062395, 780Hz early 0.04349974071043, early 440Hz 0.0000035879498667421464, overlap 780Hz 0.04343472310111392, overlap 440Hz 0.043515690848987675. PID 8734→8858 and preview source revocation verified. API29 still in progress at checkpoint. No acceptance claim for Beta21 based on this run.
+
+## Final result
+Run 45847642066 exact commit 34297dd0218f838d996a3903286c4dbfe52badbd passed all 4 jobs. API29 spectral first RMS 0.030744882738730526 and overlap 0.04346616293779256; force-stop PID 11596→11720. API35 full result above. Accepted emulator baseline, not physical device or stable signing approval.
