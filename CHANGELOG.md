@@ -3,7 +3,7 @@
 ## Beta22 integrated candidate
 - Beta20 accepted 4/4. Beta21 both connected suites and actual Android crossfade evidence passed; jobs failed screenshot extraction after package removal. Repair with shell-owned capture and exact SHA/PNG gate.
 - Timed animated PiP layer, v7 drafts, native editing and proportional lane overview, decoded motion/audio isolation, UI and force-stop tests.
-- Original and refined neural models; trained original weights retained, actual synthetic and CC0 photo metrics and host Java parity; host 720p encoding reference. No claim of production Deblur, unlimited overlay or physical-device acceptance. Exact-head integrated acceptance pending.
+- Original and refined neural models; trained original weights retained, actual synthetic and CC0 photo metrics and host Java parity; host 720p encoding reference. No claim of production Deblur, unlimited overlay or physical-device acceptance. Local screenshot 6/6 and standalone geometry 36,176 assertions passed; exact-head integrated acceptance pending.
 
 ## Beta21 integrated candidate — 2026-11-26
 - Added experimental real Android overlap compositor, two alternating video lanes, audio ramps, overlap duration model, confirmation, v6 draft schema and actual decoded pixel/PCM gate.

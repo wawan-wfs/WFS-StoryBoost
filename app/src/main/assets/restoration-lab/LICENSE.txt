@@ -21,5 +21,5 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Scope: the original synthetic-trained weight files and their refined versions, RestorationLab.java,
-RestorationLabActivity.java and the original training script only. This notice
+RestorationLabActivity.java and the original training, refinement and photo benchmark scripts only. This notice
 does not relicense the rest of WFS StoryBoost or third-party dependencies.
