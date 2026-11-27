@@ -26,6 +26,7 @@ public final class RestorationLabActivity extends Activity {
     private Future<?> pending;private int generation;private boolean closed;
     private TextView status;private ImageView before,after;private Button deblur,sr,demo;
     private android.widget.CheckBox refined;
+    private android.widget.Spinner strength;
     private int dp(int n){return StudioUi.dp(this,n);}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);getWindow().setStatusBarColor(StudioUi.BG);getWindow().setNavigationBarColor(StudioUi.BG);
@@ -37,6 +38,13 @@ public final class RestorationLabActivity extends Activity {
         StudioUi.gap(root,this,8);root.addView(StudioUi.text(this,"Eksperimen neural asli · offline · preview tiled maksimal 1.024 px. Dilatih dengan gambar sintetis, bukan model foto produksi.",13,StudioUi.MUTED,false));
         StudioUi.gap(root,this,14);
         refined=new android.widget.CheckBox(this);refined.setText("Gunakan model refined (eksperimental)");refined.setTextColor(StudioUi.TEXT);refined.setChecked(true);root.addView(refined,new LinearLayout.LayoutParams(-1,dp(48)));
+        root.addView(StudioUi.text(this,"Kekuatan residual · pilih 25% untuk koreksi ringan",12,StudioUi.MUTED,false));
+        strength=new android.widget.Spinner(this);
+        android.widget.ArrayAdapter<String> levels=new android.widget.ArrayAdapter<>(this,android.R.layout.simple_spinner_item,
+                new String[]{"0% · baseline","25% · ringan","50% · sedang","75% · kuat","100% · penuh"});
+        levels.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);strength.setAdapter(levels);
+        strength.setSelection(4);strength.setContentDescription("Kekuatan restorasi neural");
+        root.addView(strength,new LinearLayout.LayoutParams(-1,dp(48)));
         deblur=StudioUi.button(this,"Pilih foto · Deblur",true);sr=StudioUi.button(this,"Pilih foto · SR 2×",true);demo=StudioUi.button(this,"Uji demo sintetis SR 2×",false);
         for(Button button:new Button[]{deblur,sr,demo}){root.addView(button,new LinearLayout.LayoutParams(-1,dp(52)));StudioUi.gap(root,this,7);}
         deblur.setOnClickListener(v->pick(false));sr.setOnClickListener(v->pick(true));demo.setOnClickListener(v->run(null,true));
@@ -74,7 +82,7 @@ public final class RestorationLabActivity extends Activity {
     }
     private static int channel(int v){return Math.max(0,Math.min(255,v));}
     private void run(Uri uri,boolean upscale){
-        final boolean useRefined=refined.isChecked();
+        final boolean useRefined=refined.isChecked();final int amount=strength.getSelectedItemPosition()*25;
         final int token=++generation;if(pending!=null)pending.cancel(true);worker.purge();
         before.setImageDrawable(null);after.setImageDrawable(null);status.setText("Inferensi CPU berlangsung…");
         pending=worker.submit(()->{
@@ -87,7 +95,7 @@ public final class RestorationLabActivity extends Activity {
                 RestorationLab model;
                 try(InputStream stream=getAssets().open("restoration-lab/"+(upscale?"sr2x":"deblur")+(useRefined?"-refined":"")+".weights.txt")){model=RestorationLab.load(stream,upscale,useRefined);}
                 long start=SystemClock.elapsedRealtimeNanos();float[] prediction=model.inferTiled(y,w,h);long ms=(SystemClock.elapsedRealtimeNanos()-start)/1000000L;
-                for(int i=0;i<rgba.length;i++){int delta=Math.round((prediction[i]-y[i])*255);int old=rgba[i];
+                for(int i=0;i<rgba.length;i++){int delta=RestorationLab.residualDelta(y[i],prediction[i],amount);int old=rgba[i];
                     rgba[i]=Color.argb(Color.alpha(old),channel(Color.red(old)+delta),channel(Color.green(old)+delta),channel(Color.blue(old)+delta));}
                 output=Bitmap.createBitmap(rgba,w,h,Bitmap.Config.ARGB_8888);
                 if(uri!=null)SourceAccess.requireReadable(this,uri);
@@ -96,7 +104,7 @@ public final class RestorationLabActivity extends Activity {
                 runOnUiThread(()->{
                     if(closed||generation!=token){left.recycle();right.recycle();return;}
                     before.setImageBitmap(left);after.setImageBitmap(right);
-                    status.setText("Preview neural siap · "+(useRefined?"Refined":"Original")+" · "+w+" × "+h+" · "+ms+" ms CPU");
+                    status.setText("Preview neural siap · "+(useRefined?"Refined":"Original")+" · "+amount+"% · "+w+" × "+h+" · "+ms+" ms CPU");
                 });
             }catch(Exception|OutOfMemoryError ex){
                 runOnUiThread(()->{if(!closed&&generation==token)status.setText("Preview gagal atau dibatalkan. Media asli tetap aman.");});

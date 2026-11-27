@@ -770,17 +770,25 @@ public class VideoMediaQaTest {
     @SdkSuppress(minSdkVersion=35)
     @Test(timeout=1800000)
     public void timelineHdBenchmarkActualAndroid()throws Exception{
-        Uri source=importFixture("qa-hd-benchmark.mp4");byte[] hash=hashSource(source);
+        benchmarkAndroid("qa-hd-benchmark.mp4",OutputProfile.HD,1280,720,"hdBenchmarkVerified");
+    }
+    @SdkSuppress(minSdkVersion=35)
+    @Test(timeout=1800000)
+    public void timelineFullHdBenchmarkActualAndroid()throws Exception{
+        benchmarkAndroid("qa-fullhd-benchmark.mp4",OutputProfile.FULL_HD,1920,1080,"fullHdBenchmarkVerified");
+    }
+    private void benchmarkAndroid(String fixture,int quality,int width,int height,String marker)throws Exception{
+        Uri source=importFixture(fixture);byte[] hash=hashSource(source);
         long duration=MediaProbe.duration(ctx,source);assertTrue(duration>=30000);
         for(int seconds:new int[]{2,10,30})for(boolean preview:new boolean[]{false,true}){
             TimelineProject project=TimelineProject.empty().append(TimelineProject.Clip.create(source.toString(),duration,0,seconds*1000L))
-                .quality(OutputProfile.HD).adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,8,0,0,false));
+                .quality(quality).adjust(0,new ClipAdjustments(ColorLooks.ORIGINAL,8,0,0,false));
             File file=null;long[] pss={android.os.Debug.getPss()};
             try{
                 long begin=android.os.SystemClock.elapsedRealtime();file=renderAdjusted(project,preview,280,pss);
                 long elapsed=android.os.SystemClock.elapsedRealtime()-begin;
                 MediaProbe.Info info=MediaProbe.inspect(file);AspectRatioProfile.Size size=MediaDimensions.video(file);
-                assertEquals(1280,size.width);assertEquals(720,size.height);assertTrue(info.video&&info.audio);
+                assertEquals(width,size.width);assertEquals(height,size.height);assertTrue(info.video&&info.audio);
                 assertTrue(containsCodec(file,"video/avc"));assertTrue(containsCodec(file,"audio/mp4a-latm"));
                 assertTrue(Math.abs(info.durationMs-seconds*1000L)<=250);
                 MediaProbe.SampleTimeline pts=MediaProbe.inspectSampleTimeline(file);
@@ -800,7 +808,7 @@ public class VideoMediaQaTest {
                 }finally{extractor.release();}
                 long bitrate=videoBytes*8000L/Math.max(1,info.videoDurationMs);
                 assertTrue(bitrate>0&&elapsed>0&&pss[0]>0);
-                android.util.Log.i("WfsTimelinePreviewQA","hdBenchmarkVerified seconds="+seconds+" mode="+(preview?"preview":"export")+" elapsedMs="+elapsed+" bytes="+file.length()+" videoBitrate="+bitrate+" sampledPssKb="+pss[0]+" frames="+pts.videoSamples+" driftMs="+pts.lastPtsDriftMs());
+                android.util.Log.i("WfsTimelinePreviewQA",marker+" seconds="+seconds+" mode="+(preview?"preview":"export")+" elapsedMs="+elapsed+" bytes="+file.length()+" videoBitrate="+bitrate+" sampledPssKb="+pss[0]+" frames="+pts.videoSamples+" driftMs="+pts.lastPtsDriftMs());
             }finally{if(file!=null)file.delete();}
         }
         assertArrayEquals(hash,hashSource(source));

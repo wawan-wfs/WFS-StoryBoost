@@ -42,6 +42,17 @@ public final class RestorationLabModelTest {
                 boolean interrupted=false;Thread.currentThread().interrupt();try{model.inferTiled(x,1024,720);}catch(InterruptedException expected){interrupted=true;}finally{Thread.interrupted();}ok(interrupted);
             }
         }
+        for(int a=0;a<=255;a+=5)for(int b=0;b<=255;b+=5){
+            float source=a/255f,restored=b/255f;
+            ok(RestorationLab.residualDelta(source,restored,0)==0);
+            ok(RestorationLab.residualDelta(source,restored,100)==Math.round((restored-source)*255));
+            int previous=0;
+            for(int strength=0;strength<=100;strength++){
+                int delta=RestorationLab.residualDelta(source,restored,strength);
+                ok(Math.abs(delta)>=Math.abs(previous));ok(Math.abs(delta)<=Math.abs(RestorationLab.residualDelta(source,restored,100)));
+                previous=delta;
+            }
+        }
         float[] scaled=RestorationLab.bilinear2x(new float[]{0,1,0,1},2,2);
         ok(scaled.length==16);ok(Math.abs(scaled[1]-.25f)<.000001f);ok(Math.abs(scaled[2]-.75f)<.000001f);
         boolean bad=false;try{RestorationLab.bilinear2x(new float[257],257,1);}catch(IllegalArgumentException expected){bad=true;}ok(bad);

@@ -49,6 +49,14 @@ final class RestorationLab {
             }
         }return result;
     }
+    /** Scale only the predicted residual, not the underlying source luminance.
+     * Zero strength is exact identity; full strength retains previous behavior.
+     */
+    static int residualDelta(float source,float restored,int strength){
+        if(strength<0||strength>100||!Float.isFinite(source)||!Float.isFinite(restored)
+                ||source<0||source>1||restored<0||restored>1)throw new IllegalArgumentException("Invalid restoration residual");
+        return Math.round((restored-source)*255*(strength/100f));
+    }
     /** Exact tiled convolution: two 3x3 layers require a two-pixel source halo.
      * Hidden activations are bounded to (TILE+2*HALO)^2*4 floats, independent
      * of image area. True outer boundaries retain replicated padding.

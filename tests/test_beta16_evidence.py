@@ -30,6 +30,9 @@ class EvidenceTest(unittest.TestCase):
             for s in (2,10,30) for m in ("preview","export"))
         two="I/WfsTimelinePreviewQA: twoPipVerified red=128 blue=127 lowerBlue=253 baseRed=253 afterRed=253"
         self.metrics+="\n"+two+"\n"+two
+        self.metrics+="\n"+"\n".join(
+            f"I/WfsTimelinePreviewQA: fullHdBenchmarkVerified seconds={s} mode={m} elapsedMs=1000 bytes=4096 videoBitrate=8000000 sampledPssKb=20000 frames={s*24} driftMs=15"
+            for s in (2,10,30) for m in ("preview","export"))
         self.log.write_text(self.metrics)
         self.write_xml()
 
@@ -42,6 +45,7 @@ class EvidenceTest(unittest.TestCase):
         if omit:
             cases.pop()
         cases.append(f'<testcase classname="{qa.CLASS}" name="timelineHdBenchmarkActualAndroid"/>')
+        cases.append(f'<testcase classname="{qa.CLASS}" name="timelineFullHdBenchmarkActualAndroid"/>')
         if duplicate:
             cases.append(cases[0])
         self.xml.write_text("<testsuite>" + "".join(cases) + "</testsuite>")
@@ -178,6 +182,10 @@ class EvidenceTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"two-PiP"):
             self.check()
 
+    def test_full_hd_missing_api35(self):
+        self.log.write_text(self.metrics.replace("fullHdBenchmarkVerified","missing"))
+        with self.assertRaisesRegex(ValueError,"Full HD benchmark"):
+            self.check(35)
     def test_wrong_api(self):
         with self.assertRaisesRegex(ValueError, "API29/35"):
             self.check(34)

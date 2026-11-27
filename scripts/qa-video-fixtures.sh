@@ -34,6 +34,11 @@ ffmpeg -hide_banner -loglevel error -nostdin -y -threads 2 \
  -f lavfi -i testsrc2=size=1280x720:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 \
  -t 31 -c:v libx264 -threads 2 -pix_fmt yuv420p -preset ultrafast -b:v 4M -c:a aac -b:a 96k \
  -movflags +faststart "$OUT/qa-hd-benchmark.mp4"
+# Native Full HD input (no upscale of the HD reference).
+ffmpeg -hide_banner -loglevel error -nostdin -y -threads 2 \
+ -f lavfi -i testsrc2=size=1920x1080:rate=24 -f lavfi -i sine=frequency=440:sample_rate=48000 \
+ -t 31 -c:v libx264 -threads 2 -pix_fmt yuv420p -preset ultrafast -b:v 8M -c:a aac -b:a 96k \
+ -movflags +faststart "$OUT/qa-fullhd-benchmark.mp4"
 # A real long waveform fixture: silence followed by a late 440 Hz tone.
 ffmpeg -hide_banner -loglevel error -nostdin -y \
  -f lavfi -i color=c=gray:size=160x160:rate=12 \

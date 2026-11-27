@@ -33,6 +33,11 @@ public class RestorationLabQaTest {
             catch(IOException expected){}
             android.util.Log.i("WfsTimelinePreviewQA","restorationModel="+(sr?"sr2x":"deblur")+" inferenceMs="+ms+" parity=verified");
         }
+        assertEquals(0,RestorationLab.residualDelta(.2f,.8f,0));
+        assertEquals(38,RestorationLab.residualDelta(.2f,.8f,25));
+        assertEquals(153,RestorationLab.residualDelta(.2f,.8f,100));
+        assertEquals(-38,RestorationLab.residualDelta(.8f,.2f,25));
+        try{RestorationLab.residualDelta(.2f,.8f,101);fail("Out-of-range strength accepted");}catch(IllegalArgumentException expected){}
         float[] scaled=RestorationLab.bilinear2x(new float[]{0,1,0,1},2,2);
         assertEquals(16,scaled.length);assertEquals(.25f,scaled[1],.000001f);assertEquals(.75f,scaled[2],.000001f);
     }
